@@ -254,6 +254,7 @@ THIRD_PARTY_SUBAGENT_PRESETS: dict[str, dict[str, Any]] = {
         # TTY prompt, which a pooled stdio connection has no way to answer, so
         # without this the agent waits on a terminal that is not there.
         "command": "hermes acp --accept-hooks",
+        "readyTimeoutMs": 120000,
     },
     "openclaw": {
         "name": "OpenClaw",

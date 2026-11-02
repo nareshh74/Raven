@@ -1,8 +1,10 @@
 """Tests for raven.utils.atomic_io."""
 
+import json
 import multiprocessing
 import os
 import stat
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -87,6 +89,115 @@ def test_atomic_replace_creates_missing_file(tmp_path: Path):
     path = tmp_path / "fresh.jsonl"
     atomic_replace(path, "data\n")
     assert path.read_text(encoding="utf-8") == "data\n"
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows file ACLs")
+def test_private_write_protects_before_payload_and_preserves_other_principals(tmp_path, monkeypatch):
+    from raven.utils import atomic_io
+
+    executable = str(Path(os.environ["SystemRoot"]) / "System32/WindowsPowerShell/v1.0/powershell.exe")
+    env = {key: value for key, value in os.environ.items() if key.lower() != "psmodulepath"}
+    parent = str(tmp_path).replace("'", "''")
+    setup = (
+        f"$p='{parent}';$acl=[IO.Directory]::GetAccessControl($p);"
+        "$rule=[System.Security.AccessControl.FileSystemAccessRule]::new("
+        "'CodexSandboxUsers','ReadAndExecute','ContainerInherit,ObjectInherit','None','Allow');"
+        "$acl.AddAccessRule($rule);[IO.Directory]::SetAccessControl($p,$acl)"
+    )
+    subprocess.run([executable, "-NoProfile", "-NonInteractive", "-Command", setup], check=True, capture_output=True, env=env)
+
+    def acl(path):
+        quoted = str(path).replace("'", "''")
+        script = (
+            f"$acl=[IO.File]::GetAccessControl('{quoted}');"
+            "$rules=@($acl.Access|ForEach-Object{"
+            "[ordered]@{identity=$_.IdentityReference.Value;rights=$_.FileSystemRights.ToString();"
+            "type=$_.AccessControlType.ToString();inheritance=$_.InheritanceFlags.ToString();"
+            "propagation=$_.PropagationFlags.ToString()}});"
+            "[ordered]@{protected=$acl.AreAccessRulesProtected;rules=$rules}|ConvertTo-Json -Depth 5 -Compress"
+        )
+        result = subprocess.run(
+            [executable, "-NoProfile", "-NonInteractive", "-Command", script],
+            check=True, capture_output=True, text=True, env=env,
+        )
+        return json.loads(result.stdout)
+
+    path = tmp_path / "config.json"
+    path.write_text("old", encoding="utf-8")
+    before = acl(path)
+    assert any(rule["identity"].endswith("CodexSandboxUsers") for rule in before["rules"])
+    original = atomic_io._protect_windows_private_file
+    sizes = []
+
+    def protect(target, like):
+        sizes.append(target.stat().st_size)
+        original(target, like)
+        permissions = acl(target)
+        assert permissions["protected"]
+        assert not any(
+            rule["identity"].endswith("CodexSandboxUsers") and rule["type"] == "Allow"
+            for rule in permissions["rules"]
+        )
+
+    monkeypatch.setattr(atomic_io, "_protect_windows_private_file", protect)
+    atomic_replace(path, "synthetic-private-value", mode=0o600)
+    atomic_replace(tmp_path / "fresh.json", "synthetic-new-value", mode=0o600)
+    assert sizes == [0, 0]
+    assert path.read_text(encoding="utf-8") == "synthetic-private-value"
+    assert (tmp_path / "fresh.json").read_text(encoding="utf-8") == "synthetic-new-value"
+    expected = [rule for rule in before["rules"] if not rule["identity"].endswith("CodexSandboxUsers")]
+    assert sorted(acl(path)["rules"], key=str) == sorted(expected, key=str)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows file ACLs")
+def test_private_write_denies_retained_readers_during_acl_protection(tmp_path, monkeypatch):
+    import ctypes
+
+    from raven.utils import atomic_io
+
+    _, kernel32, _ = atomic_io._win32_security()
+
+    def attempted_reader(path):
+        handle = kernel32.CreateFileW(str(path), 0x80000000, 7, None, 3, 0x80, None)
+        if handle is None or handle == ctypes.c_void_p(-1).value:
+            return ctypes.get_last_error()
+        kernel32.CloseHandle(handle)
+        return 0
+
+    original = atomic_io._protect_windows_private_file
+    denied = []
+
+    def protect(target, like):
+        denied.append(attempted_reader(target))
+        original(target, like)
+        denied.append(attempted_reader(target))
+
+    monkeypatch.setattr(atomic_io, "_protect_windows_private_file", protect)
+    existing = tmp_path / "existing.json"
+    existing.write_text("old", encoding="utf-8")
+    for path in (existing, tmp_path / "fresh.json"):
+        atomic_replace(path, "private payload", mode=0o600)
+        assert attempted_reader(path) == 0
+        assert path.read_text(encoding="utf-8") == "private payload"
+    assert denied == [32, 32, 32, 32]
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows file ACLs")
+def test_private_write_refuses_payload_when_acl_protection_fails(tmp_path, monkeypatch):
+    from raven.utils import atomic_io
+
+    path = tmp_path / "config.json"
+    path.write_text("unchanged", encoding="utf-8")
+
+    def refuse(target, like):
+        assert target.stat().st_size == 0
+        raise OSError("ACL protection refused")
+
+    monkeypatch.setattr(atomic_io, "_protect_windows_private_file", refuse)
+    with pytest.raises(OSError, match="ACL protection refused"):
+        atomic_replace(path, "must not be written", mode=0o600)
+    assert path.read_text(encoding="utf-8") == "unchanged"
+    assert not path.with_name(path.name + ".tmp").exists()
 
 
 def test_helpers_work_cross_platform(tmp_path: Path):

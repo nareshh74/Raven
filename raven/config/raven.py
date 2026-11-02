@@ -1500,6 +1500,7 @@ themselves.
 MEMORY_BACKEND_DISTRIBUTIONS: dict[str, str] = {
     SHIPPED_DEFAULT_BACKEND: "everos-memory",
     "everos-cloud": "everos-cloud-memory",
+    "hindsight": "hindsight-memory",
 }
 """Which distribution contributes each memory backend raven ships a name for.
 

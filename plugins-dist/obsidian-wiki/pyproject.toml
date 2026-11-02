@@ -1,0 +1,19 @@
+[project]
+name = "raven-obsidian-wiki"
+version = "0.1.0"
+description = "Session-routed Obsidian wiki context for Raven"
+requires-python = ">=3.12"
+dependencies = ["raven"]
+
+[tool.uv.sources]
+raven = { workspace = true }
+
+[project.entry-points."raven.plugins"]
+obsidian-wiki = "raven_obsidian_wiki.plugin:register"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["raven_obsidian_wiki"]

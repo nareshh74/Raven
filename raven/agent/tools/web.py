@@ -26,6 +26,24 @@ from raven.contracts.tool import Tool
 from raven.security.network import guarded_fetch, validate_url_target
 
 
+def _firecrawl_base() -> str:
+    """Custom Firecrawl root: env var, then ``tools.web.providers.firecrawl.baseUrl``, else ``""``."""
+    env = os.environ.get("FIRECRAWL_API_BASE_URL", "")
+    if env:
+        return env
+    from raven.config.live import default_live
+
+    return str(default_live().get("tools.web.providers.firecrawl.baseUrl") or "")
+
+
+def _firecrawl_url(path: str) -> str:
+    return (_firecrawl_base() or "https://api.firecrawl.dev").rstrip("/") + path
+
+
+def _keyless(vendor: str) -> bool:
+    return vendor == "firecrawl" and bool(_firecrawl_base())
+
+
 @dataclass(frozen=True)
 class SearchProviderSpec:
     """One ``web_search`` backend: its name, its bare env var, its sign-up page.
@@ -335,7 +353,7 @@ class WebSearchTool(Tool):
     def ready(self) -> bool:
         """Whether a call can run: a key resolves, or the selected vendor needs none."""
         vendor, key = self._resolve()
-        return bool(key) or not SEARCH_PROVIDERS[vendor].needs_key
+        return bool(key) or not SEARCH_PROVIDERS[vendor].needs_key or _keyless(vendor)
 
     @classmethod
     def is_configured(cls, config_key: str | None, provider: str = DEFAULT_SEARCH_PROVIDER) -> bool:
@@ -367,7 +385,7 @@ class WebSearchTool(Tool):
         # unsent, and a vendor switched under the tool starts afresh.
         vendor, key = self._resolve()
         spec = SEARCH_PROVIDERS[vendor]
-        if not key and spec.needs_key:
+        if not key and spec.needs_key and not _keyless(vendor):
             # Reachable only if the key goes away after registration, since the
             # loops withhold this tool when there is none. Name the file actually
             # in force: hard-coding ~/.raven/config.json sent anyone running with
@@ -524,7 +542,7 @@ class WebSearchTool(Tool):
             )
         if vendor == "firecrawl":
             return await client.post(
-                "https://api.firecrawl.dev/v1/search",
+                _firecrawl_url("/v1/search"),
                 json={"query": query, "limit": n},
                 headers={
                     "Accept": "application/json",
@@ -916,7 +934,7 @@ class ImageSearchTool(Tool):
                 timeout=15.0,
             )
         return await client.post(
-            "https://api.firecrawl.dev/v2/search",
+            _firecrawl_url("/v2/search"),
             json={"query": query, "limit": n, "sources": [{"type": "images"}]},
             headers={**auth_json, "Authorization": f"Bearer {key}"},
             timeout=15.0,
@@ -1107,7 +1125,7 @@ class WebFetchTool(Tool):
         if provider not in FETCH_PROVIDERS:
             raise ValueError(f"unknown web_fetch provider {provider!r}; one of {sorted(FETCH_PROVIDERS)}")
         spec = FETCH_PROVIDERS[provider]
-        if not spec.needs_key or api_key or os.environ.get(spec.env_var):
+        if not spec.needs_key or api_key or os.environ.get(spec.env_var) or _keyless(provider):
             return provider
         if not warn:
             return DEFAULT_FETCH_PROVIDER
@@ -1316,7 +1334,7 @@ class WebFetchTool(Tool):
         if vendor == "firecrawl":
             async with httpx.AsyncClient(timeout=30.0, proxy=self.proxy) as client:
                 r = await client.post(
-                    "https://api.firecrawl.dev/v1/scrape",
+                    _firecrawl_url("/v1/scrape"),
                     json={"url": url, "formats": ["markdown"]},
                     headers={**json_headers, "Authorization": f"Bearer {key}"},
                 )

@@ -9,6 +9,7 @@ lock is cross-platform (``portalocker``: POSIX ``fcntl`` + Windows
 
 import os
 import stat
+import subprocess
 import threading
 from contextlib import contextmanager, suppress
 from functools import cache
@@ -188,6 +189,50 @@ def _create_like(tmp_path: Path, path: Path, preserve: int | None) -> int:
     return os.open(tmp_path, flags, 0o666 if preserve is None else preserve & 0o777)
 
 
+def _protect_windows_private_file(path: Path, like: Path) -> None:
+    target = str(path).replace("'", "''")
+    source = str(like).replace("'", "''")
+    script = (
+        "$ErrorActionPreference='Stop';"
+        f"$target='{target}';$source='{source}';"
+        "$acl=if([IO.File]::Exists($source)){[IO.File]::GetAccessControl($source)}"
+        "else{[IO.File]::GetAccessControl($target)};"
+        "$acl.SetAccessRuleProtection($true,$true);"
+        "[IO.File]::SetAccessControl($target,$acl);"
+        "$acl=[IO.File]::GetAccessControl($target);"
+        "foreach($rule in @($acl.Access)){"
+        "if($rule.AccessControlType -eq 'Allow' -and "
+        "$rule.IdentityReference.Value -match '(^|\\\\)CodexSandboxUsers$'){"
+        "[void]$acl.RemoveAccessRuleSpecific($rule)}};"
+        "[IO.File]::SetAccessControl($target,$acl)"
+    )
+    executable = Path(os.environ["SystemRoot"]) / "System32/WindowsPowerShell/v1.0/powershell.exe"
+    try:
+        result = subprocess.run(
+            [str(executable), "-NoProfile", "-NonInteractive", "-Command", script],
+            capture_output=True, timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise OSError("Cannot protect private Windows file before writing") from exc
+    if result.returncode:
+        raise OSError("Cannot protect private Windows file before writing")
+
+
+def _create_private(tmp_path: Path, path: Path, mode: int) -> int:
+    # Exclusive sharing prevents a reader retaining a handle before ACL narrowing.
+    if os.name == "nt" and mode & 0o077 == 0:
+        fd = _create_with_dacl_of(tmp_path, path if path.exists() else path.parent)
+    else:
+        fd = os.open(tmp_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, mode)
+    try:
+        if os.name == "nt" and mode & 0o077 == 0:
+            _protect_windows_private_file(tmp_path, path)
+        return fd
+    except BaseException:
+        os.close(fd)
+        raise
+
+
 def _replace_unlocked(path: Path, data: str, create_mode: int | None = None, newline: str | None = None) -> None:
     tmp_path = path.with_name(path.name + ".tmp")
     # Callers hold path's lock, so a tmp already here is a dead writer's: it
@@ -203,11 +248,8 @@ def _replace_unlocked(path: Path, data: str, create_mode: int | None = None, new
                 preserve = None
             f = os.fdopen(_create_like(tmp_path, path, preserve), "w", encoding="utf-8", newline=newline)
         else:
-            # Secret-bearing files: the mode must hold from the first byte, so it
-            # is applied by os.open at creation — narrowing with a chmod after the
-            # write leaves the payload readable for the span in between.
             f = os.fdopen(
-                os.open(tmp_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, create_mode),
+                _create_private(tmp_path, path, create_mode),
                 "w",
                 encoding="utf-8",
                 newline=newline,
@@ -244,8 +286,9 @@ def remove_with_lock(path: Path) -> None:
 def atomic_replace(path: Path, data: str, *, mode: int | None = None, newline: str | None = None) -> None:
     """Replace ``path``'s content with ``data`` via temp file + os.replace.
 
-    ``mode``: hold this exact mode from the temp file's creation onward and
-    carry it onto ``path`` (for secret-bearing files like token state). The
+    ``mode``: apply POSIX permissions at creation. On Windows, a private mode
+    protects the temporary file's DACL before payload writing and removes
+    CodexSandboxUsers Allow rules while retaining other principals. The
     default preserves the target's existing mode -- and on Windows its DACL --
     from the temp file's creation, umask for a new file.
     ``newline`` is :func:`open`'s: ``""`` writes ``data`` byte for byte, with

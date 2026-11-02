@@ -1045,6 +1045,15 @@ class WebProviderKey(Base):
     api_key: str = ""
 
 
+class FirecrawlProviderConfig(WebProviderKey):
+    """Firecrawl credential plus an optional self-hosted endpoint."""
+
+    base_url: str = ""
+    """Self-hosted Firecrawl API root (e.g. ``http://localhost:3003``). The
+    ``FIRECRAWL_API_BASE_URL`` environment variable wins; empty means hosted.
+    A custom endpoint needs no API key."""
+
+
 class WebProvidersConfig(Base):
     """Credentials keyed by vendor, not by the tool that happens to use them.
 
@@ -1066,7 +1075,7 @@ class WebProvidersConfig(Base):
     tavily: WebProviderKey = Field(default_factory=WebProviderKey)
     exa: WebProviderKey = Field(default_factory=WebProviderKey)
     brave: WebProviderKey = Field(default_factory=WebProviderKey)
-    firecrawl: WebProviderKey = Field(default_factory=WebProviderKey)
+    firecrawl: FirecrawlProviderConfig = Field(default_factory=FirecrawlProviderConfig)
     serply: WebProviderKey = Field(default_factory=WebProviderKey)
     keenable: WebProviderKey = Field(default_factory=WebProviderKey)
     deepseek: WebProviderKey = Field(default_factory=WebProviderKey)

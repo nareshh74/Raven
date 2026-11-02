@@ -243,7 +243,7 @@ def render_config(source: Path) -> Path:
     root.mkdir(parents=True, exist_ok=True)
     seed_guide(workspace)
     render.sweep_stale_renders(root)
-    return render.write_rendered(config, root, own_plugins=(FLOW_PLUGIN_ID,))
+    return render.write_rendered(config, root, own_plugins=(FLOW_PLUGIN_ID, "obsidian-wiki"))
 
 
 def main() -> int:

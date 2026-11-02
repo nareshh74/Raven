@@ -741,7 +741,7 @@ def test_the_child_sees_exactly_the_host_executors_baseline(tmp_path, monkeypatc
     from raven.sandbox.direct_executor import DirectExecutor
 
     monkeypatch.setenv("CODE_FLOW_TEST_SECRET", "do-not-leak")
-    probe = f"{sys.executable} -c 'import json,os;print(json.dumps(sorted(os.environ)))'"
+    probe = _python_command(tmp_path, "import json,os;print(json.dumps(sorted(os.environ)))")
     theirs = set(json.loads(_run(DirectExecutor().exec(probe, timeout=15)).stdout))
     ours = _child_env_keys(str(_run(_tool(tmp_path).execute(command=probe))))
     shell_added = {"PWD", "OLDPWD", "SHLVL", "_"}
@@ -756,7 +756,8 @@ def test_the_baseline_is_learned_once_and_read_fresh(tmp_path, monkeypatch):
     first = _run(executor.allowed_keys())
     assert first is _run(executor.allowed_keys()), "one probe per executor"
     monkeypatch.setenv("PATH", os.environ["PATH"] + os.pathsep + str(tmp_path / "fresh-bin"))
-    text = str(_run(tool.execute(command="echo $PATH")))
+    probe = _python_command(tmp_path, "import os;print(os.environ['PATH'])")
+    text = str(_run(tool.execute(command=probe)))
     assert str(tmp_path / "fresh-bin") in text, "values come from the process environment at spawn time"
 
 
