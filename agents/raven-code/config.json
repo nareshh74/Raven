@@ -60,10 +60,20 @@
       "browser_snapshot",
       "browser_tabs",
       "browser_type"
-    ]
+    ],
+    "mcpServers": {
+      "trail": {
+        "args": [
+          "C:/Users/kumarnaresh/AppData/Local/hermes/integrations/trail-code/trail.mjs",
+          "mcp"
+        ],
+        "enabled": true,
+        "command": "C:/Users/kumarnaresh/AppData/Local/hermes/tools/node-26.7.0-win32-x64/node.exe"
+      }
+    }
   },
   "memory": {
-    "backend": "everos",
+    "backend": "hindsight",
     "userId": "raven-code",
     "agentId": "raven-code",
     "memoryTopK": 5
@@ -88,7 +98,25 @@
           "CLAUDE.md",
           "CONTEXT.md"
         ]
+      },
+      "obsidian-wiki": {
+        "enabled": true
       }
     }
+  },
+  "skillForge": {
+    "alwaysMax": 9,
+    "localDirs": [
+      {
+        "name": "obsidian-wiki-ops",
+        "alwaysEnabled": true,
+        "path": "C:/learn/obsidian-wiki/.skills"
+      },
+      {
+        "name": "obsidian-wiki-core",
+        "alwaysEnabled": true,
+        "path": "C:/Users/kumarnaresh/.agents/skills-obsidian-wiki"
+      }
+    ]
   }
 }

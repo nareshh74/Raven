@@ -238,7 +238,7 @@ def _write_migration_version(config_path: Path, version: int = CURRENT_CONFIG_VE
     """
     stamp = _stamp_path(config_path)
     try:
-        atomic_replace(stamp, json.dumps({"version": version}) + "\n")
+        atomic_replace(stamp, json.dumps({"version": version}) + "\n", mode=0o600)
     except OSError as exc:
         logging.getLogger(__name__).debug("Could not write the migration stamp %s: %s", stamp, exc)
 

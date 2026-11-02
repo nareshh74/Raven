@@ -48,6 +48,7 @@ import itertools
 import json
 import os
 import shlex
+import subprocess
 import sys
 import time
 from dataclasses import dataclass
@@ -173,10 +174,12 @@ class CodeExecutor(DirectExecutor):
         list here is how credentials would start reaching commands.
         """
         if self._allowed_keys is None:
-            probe = (
-                shlex.quote(sys.executable)
-                + " -c 'import json,os,sys;sys.stdout.write(json.dumps(sorted(os.environ)))'"
-            )
+            argv = [
+                sys.executable,
+                "-c",
+                "import json,os,sys;sys.stdout.write(json.dumps(sorted(os.environ)))",
+            ]
+            probe = subprocess.list2cmdline(argv) if os.name == "nt" else shlex.join(argv)
             result = await super().exec(probe, timeout=_PROBE_TIMEOUT)
             try:
                 names = json.loads(result.stdout)

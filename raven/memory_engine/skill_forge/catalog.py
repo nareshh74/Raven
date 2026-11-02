@@ -312,22 +312,16 @@ class LocalSkillCatalog:
         """Full SKILL.md content, or ``None`` if absent."""
         return self._registry.get_body(name)
 
-    # Truncation priority for the always-set, lowest number survives first.
-    # Explicit because sorting on the source *label* is alphabetical, which is
-    # a different order that only looks right by accident: ``builtin`` happens
-    # to sort ahead of ``external``, but so does ``external`` ahead of
-    # ``workspace``, so a user's own always-skill was the first thing dropped.
-    _ALWAYS_SOURCE_RANK: dict[str, int] = {"builtin": 0, "workspace": 1, "external": 2}
+    _ALWAYS_SOURCE_RANK: dict[str, int] = {"workspace": 0, "builtin": 1, "external": 2}
     _ALWAYS_SOURCE_RANK_OTHER = 3
 
     def get_always_skills(self) -> list[SkillMeta]:
         """Skills flagged ``always: true`` whose requirements are met.
 
-        Truncation to ``always_max`` keeps ``builtin`` first (shipped skills
-        describe the runtime's own tools -- dropping one leaves a tool nobody
-        told the agent how to use), then ``workspace`` (the user's own pool),
-        then ``external``, then any mirror source alphabetically; within a
-        source, by name. WARN lists dropped skill names.
+        Truncation to ``always_max`` keeps explicit ``workspace`` skills
+        first, then ``builtin``, then ``external`` and mirror sources.
+        Within a source, sort by name. Skills beyond the startup cap remain
+        available through the catalog. WARN lists dropped skill names.
         """
         if getattr(self._config, "disable_always", False):
             return []

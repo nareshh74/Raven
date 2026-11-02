@@ -29,6 +29,7 @@ requirement.
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import itertools
 import json
@@ -360,6 +361,7 @@ def inherit_plugin_opt_outs(config: dict, host: dict, *, own: Iterable[str] = ()
 _MEMORY_SLICE_INHERITED: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     "everos-memory": (("base_url",), ()),
     "everos-cloud-memory": (("base_url",), ("api_key",)),
+    "hindsight-memory": (("base_url", "bank"), ()),
 }
 
 
@@ -923,7 +925,8 @@ def write_rendered(config: dict, root: Path, *, own_plugins: Iterable[str] = ())
     The location is the mechanism: raven derives its data dir from the
     config file's own parent, so wherever this file goes, sessions and cache
     go too. POSIX permissions are owner-only because the render is where the
-    secrets landed; Windows uses the containing directory's inherited ACLs.
+    secrets landed; Windows preserves other principals but excludes sandbox-group
+    grants before writing the payload.
     The pid in the name is what :func:`sweep_stale_renders` reads back.
 
     The host's refusals (:func:`inherit_host_denials`), plugin opt-outs
@@ -938,6 +941,13 @@ def write_rendered(config: dict, root: Path, *, own_plugins: Iterable[str] = ())
     inherit_host_denials(config, host)
     inherit_plugin_opt_outs(config, host, own=own_plugins)
     inherit_memory_backend(config, host)
+    host_tools = host.get("tools", {})
+    host_servers = host_tools.get("mcpServers", host_tools.get("mcp_servers", {}))
+    if host_servers:
+        tools = config.setdefault("tools", {})
+        own_servers = tools.pop("mcp_servers", {})
+        own_servers.update(tools.get("mcpServers", {}))
+        tools["mcpServers"] = {**copy.deepcopy(host_servers), **own_servers}
     return _write_owner_only(config, root / f".config.rendered.{os.getpid()}.json")
 
 
@@ -956,9 +966,5 @@ def write_rendered_part(part: dict, root: Path, name: str) -> Path:
 
 
 def _write_owner_only(data: dict, path: Path) -> Path:
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as stream:
-        if hasattr(os, "fchmod"):
-            os.fchmod(stream.fileno(), 0o600)
-        json.dump(data, stream, indent=2, ensure_ascii=False)
+    atomic_replace(path, json.dumps(data, indent=2, ensure_ascii=False), mode=0o600)
     return path

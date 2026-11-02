@@ -241,10 +241,7 @@ class TestLocalSkillCatalog:
         assert "pdf-tool" not in always
 
     def test_always_truncation_ranks_sources_explicitly(self) -> None:
-        """Sorting on the source *label* is alphabetical, which put ``external``
-        ahead of ``workspace`` — so the user's own always-skill was the first one
-        dropped at the cap. The rank is explicit: builtin (documents the runtime's
-        own tools) > workspace (the user's pool) > external > mirror sources."""
+        """Explicit workspace startup skills precede builtin and external defaults."""
         key = LocalSkillCatalog._always_sort_key
         ranked = sorted(
             [
@@ -257,14 +254,14 @@ class TestLocalSkillCatalog:
             key=key,
         )
         assert [m.source for m in ranked] == [
-            "builtin",
-            "builtin",
             "workspace",
+            "builtin",
+            "builtin",
             "external",
             "anthropics",
         ]
         # Within one source, by name — stable regardless of disk scan order.
-        assert [m.name for m in ranked[:2]] == ["a-builtin", "z-builtin"]
+        assert [m.name for m in ranked[1:3]] == ["a-builtin", "z-builtin"]
 
     def test_always_cap_drops_the_lowest_ranked_source(self, tmp_path: Path) -> None:
         ws = tmp_path / "chanwork"
@@ -289,7 +286,10 @@ class TestLocalSkillCatalog:
             config=_Cfg(),
             start_watcher=False,
         )
-        assert [m.name for m in catalog.get_always_skills()] == ["shipped"]
+        assert [m.name for m in catalog.get_always_skills()] == ["mine"]
+        assert catalog.load_skill("shipped") is not None
+        assert "body" in catalog.load_skill("shipped")
+        assert {m.name for m in catalog.registry.list_all()} == {"mine", "shipped"}
 
     def test_load_skills_for_context_renders_body(self, catalog) -> None:
         metas = [m for m in catalog.registry.list_all() if m.name == "pdf-tool"]

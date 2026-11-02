@@ -22,6 +22,32 @@ import pytest
 from raven.config import product_render as render
 
 
+@pytest.mark.parametrize("host_key", ["mcpServers", "mcp_servers"])
+@pytest.mark.parametrize("own_key", ["mcpServers", "mcp_servers"])
+def test_write_rendered_inherits_host_mcp_without_overriding_product(tmp_path, monkeypatch, host_key, own_key):
+    host = {"tools": {host_key: {
+        "trail": {"command": "node", "args": ["trail.mjs", "mcp"], "enabled": True},
+        "disabled": {"command": "host", "enabled": True},
+    }}}
+    original = copy.deepcopy(host)
+    monkeypatch.setattr(render, "host_config", lambda: host)
+    config = {"tools": {"restrictToWorkspace": True, own_key: {
+        "disabled": {"enabled": False},
+        "private": {"command": "product"},
+    }}}
+    data = json.loads(render.write_rendered(config, tmp_path).read_text())
+    assert data["tools"] == {
+        "restrictToWorkspace": True,
+        "mcpServers": {
+            "trail": {"command": "node", "args": ["trail.mjs", "mcp"], "enabled": True},
+            "disabled": {"enabled": False},
+            "private": {"command": "product"},
+        },
+    }
+    config["tools"]["mcpServers"]["trail"]["args"].append("changed")
+    assert host == original
+
+
 def test_env_wins_over_the_env_file(tmp_path, monkeypatch):
     f = tmp_path / ".env"
     f.write_text("# comment\n\nKEY=from-file\nOTHER = spaced \n", encoding="utf-8")

@@ -1,0 +1,12 @@
+[plugin]
+id = "obsidian-wiki"
+version = "0.1.0"
+display_name = "Obsidian Wiki"
+bundled = false
+
+[[plugin.contributes.hooks]]
+name = "obsidian_wiki"
+factory = "raven_obsidian_wiki.plugin:make_hook"
+
+[plugin.config_schema]
+enabled = { type = "boolean" }
