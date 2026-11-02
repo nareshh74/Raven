@@ -1333,7 +1333,7 @@ export const UI_TEXT: Record<Locale, Record<string, string>> = {
     'gui.unpinned_ok': 'Unpinned',
     'gui.update.behind': 'Stale page build',
     'gui.update.behind_body':
-      'ui-web/src or i18n/messages.json changed after dist/index.html was built, so this page is older than the code it runs on. In the repository root run make build-ui, then reload this page.',
+      'ui-web/src, i18n/messages.json or ui-shared changed after dist/index.html was built, so this page is older than the code it runs on. In the repository root run make build-ui, then reload this page.',
     'gui.update.behind_how': 'How to rebuild',
     'gui.update.behind_title': 'Rebuild the page',
     'gui.update.note': 'UI updated on disk',
@@ -2737,6 +2737,7 @@ export const UI_TEXT: Record<Locale, Record<string, string>> = {
     'gui.tasks.copied_answer': 'Answer copied',
     'gui.composer.ph_session': 'Continue the conversation...',
     'gui.composer.ph_busy': 'Continue the conversation; Raven will receive your new instruction directly',
+    'gui.composer.resize': 'Drag to resize the composer',
     'gui.at.point': 'What this is about',
     'gui.at.folder': 'Folder',
     'gui.at.bases': 'Knowledge bases',
@@ -4812,7 +4813,7 @@ export const UI_TEXT: Record<Locale, Record<string, string>> = {
     'gui.unpinned_ok': '已取消固定',
     'gui.update.behind': '页面构建落后于源码',
     'gui.update.behind_body':
-      'ui-web/src 或 i18n/messages.json 在 dist/index.html 构建之后有改动，这个页面比它背后的代码旧。在仓库根目录运行 make build-ui，然后刷新本页。',
+      'ui-web/src、i18n/messages.json 或 ui-shared 在 dist/index.html 构建之后有改动，这个页面比它背后的代码旧。在仓库根目录运行 make build-ui，然后刷新本页。',
     'gui.update.behind_how': '如何重建',
     'gui.update.behind_title': '重建页面',
     'gui.update.note': '界面有更新',
@@ -6139,6 +6140,7 @@ export const UI_TEXT: Record<Locale, Record<string, string>> = {
     'gui.tasks.copied_answer': '已复制这次的回答',
     'gui.composer.ph_session': '继续对话…',
     'gui.composer.ph_busy': '继续对话，Raven 将直接收到你的新指令',
+    'gui.composer.resize': '拖动调整输入框高度',
     'gui.at.point': '本次对话的范围',
     'gui.at.folder': '工作目录',
     'gui.at.bases': '知识库',
