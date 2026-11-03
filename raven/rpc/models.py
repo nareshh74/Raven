@@ -227,6 +227,22 @@ class SubagentRow(_Strict):
             "host-qualified id under either rule, since it runs on raven's providers whatever it advertised."
         ),
     )
+    effort: str | None = Field(
+        default=None,
+        description=(
+            "The reasoning effort this row sends, or null to use the agent's own. A value from "
+            "`effort_choices`; set through the agent's thought_level config option, separately from `model`, "
+            "or as a session mode on an agent whose modes are its effort menu."
+        ),
+    )
+    effort_choices: list["SubagentEffortChoice"] = Field(
+        default_factory=list,
+        description=(
+            "The reasoning efforts this row's agent offers on the row's own model: its thought_level option, "
+            "or its mode menu when every mode is a reasoning level. Empty when it offers neither. An agent that "
+            "packs effort into model ids instead has no such menu."
+        ),
+    )
 
 
 class DirectTarget(_Strict):
@@ -317,6 +333,30 @@ class InstanceRow(_Strict):
         description=(
             "What the graph this instance belongs to was dispatched for. Absent -- not empty -- for an "
             "instance that came from no orchestration, so its presence is what says the row has a source."
+        ),
+    )
+    attempt_agents: list[str] | None = Field(
+        default=None,
+        alias="attemptAgents",
+        description=(
+            "The agent of each attempt of this DAG node, in order. Present only on the row of a node that "
+            "was reassigned, so its presence is what marks one; a run without a move carries no key."
+        ),
+    )
+    node_instance: str | None = Field(
+        default=None,
+        alias="nodeInstance",
+        description=(
+            "The handle of the node's last attempt -- null when that attempt kept no session. Rides beside "
+            "attemptAgents because the row's own handle is the node's name, not a conversation."
+        ),
+    )
+    node_instance_auto: bool | None = Field(
+        default=None,
+        alias="nodeInstanceAuto",
+        description=(
+            "Whether the node's current handle was minted for it rather than named by the graph. Present "
+            "with attemptAgents; absent on every row of a run that never reassigned a node."
         ),
     )
     turn_started_at_ms: int | None = Field(
@@ -572,7 +612,11 @@ class NoticePayload(_Strict):
         description=(
             "What `kind` says it is: the blocking tool's own first line, the failed call's error category "
             "(or `empty_reply` / `thinking_only` for the wait before an empty-reply resend or a reasoning "
-            "step-down), or the organ that dropped out. Empty for `silent_turn`."
+            "step-down), or the organ that dropped out. For `silent_turn`, what the reply read as the marker had "
+            "streamed before it was: a think block the model inlined ahead of it, which goes out as it comes, counted "
+            "over the step it was drawn in (its call and a cut answer's continuations, or the wrap-up alone). A "
+            "client that drew it takes back exactly that suffix of the step's text, and nothing it drew before. "
+            "Empty when the reply showed nothing."
         ),
     )
     transient: bool = Field(
@@ -1078,6 +1122,31 @@ class DagNodeUpdatedPayload(_FromAStint):
         default=None,
         description="The judge's supporting quote for the selection, at most 500 characters. Absent when it gave none.",
     )
+    subagent: str | None = Field(
+        default=None,
+        description=(
+            "The agent running the node now. Sent with every frame of a reassigned node from its new "
+            "attempt's running update on, so a client that missed the reassignment still learns who has it."
+        ),
+    )
+    instance: str | None = Field(
+        default=None,
+        description=(
+            "The handle that attempt runs on, or null for an agent that keeps no session. A present null "
+            "clears the handle a client was showing; an absent key means this frame does not speak for it."
+        ),
+    )
+    instance_auto: bool | None = Field(
+        default=None,
+        description="Whether that handle was minted for the node rather than named by the graph.",
+    )
+    attempt_agents: list[str] | None = Field(
+        default=None,
+        description=(
+            "The agent of each attempt of this node, in order, sent on every frame of a reassigned node. "
+            "A client uses the length to place a delayed frame in the attempt it belongs to."
+        ),
+    )
 
 
 class DagNodeUpdatedEvent(_Strict):
@@ -1153,6 +1222,25 @@ class DagRunFile(_Strict):
         default=None,
         description="The judge's supporting quote for the selection, at most 500 characters. Absent when it gave none.",
     )
+    subagent: str | None = Field(
+        default=None,
+        description=(
+            "The agent the node's last attempt ran on. Sent only for a node that was reassigned: every "
+            "other node's frame already named it, and an unchanged one would only repeat that."
+        ),
+    )
+    instance: str | None = Field(
+        default=None,
+        description="The handle that attempt ran on, or null when it kept no session. Sent with subagent.",
+    )
+    instance_auto: bool | None = Field(
+        default=None,
+        description="Whether that handle was minted for the node rather than named by the graph. Sent with subagent.",
+    )
+    attempt_agents: list[str] | None = Field(
+        default=None,
+        description="The agent of each attempt of this node, in order. Present only on a node that was reassigned.",
+    )
 
 
 class DagRunCompletedPayload(_FromAStint):
@@ -1185,6 +1273,20 @@ class DagSnapshotNode(_Strict):
     subagent: str | None = None
     depends_on: list[str] | None = None
     instance: str | None = None
+    instance_auto: bool | None = Field(
+        default=None,
+        description=(
+            "Whether the node's current handle was minted for it rather than named by the graph. Present "
+            "only for a node that was reassigned, whose handle may have changed under it."
+        ),
+    )
+    attempt_agents: list[str] | None = Field(
+        default=None,
+        description=(
+            "The agent of each attempt of this node, in order. Present only for a node that was "
+            "reassigned; an empty list on every node would claim a move that never happened."
+        ),
+    )
     status: DagSnapshotNodeStatus
     started_at: int | None = None
     ended_at: int | None = None
@@ -1378,6 +1480,20 @@ class TaskNode(_Strict):
     node_summary: str | None = None
     agent: str
     instance: str | None = None
+    instance_auto: bool | None = Field(
+        default=None,
+        description=(
+            "Whether the node's current handle was minted for it rather than named by the graph. Present "
+            "only for a node that was reassigned, whose handle may have changed under it."
+        ),
+    )
+    attempt_agents: list[str] | None = Field(
+        default=None,
+        description=(
+            "The agent of each attempt of this node, in order. Present only for a node that was "
+            "reassigned; an empty list on every node would claim a move that never happened."
+        ),
+    )
     status: DagSnapshotNodeStatus
     depends_on: list[str]
     started_at: int | None = None
@@ -2210,6 +2326,45 @@ class ModelDisconnectResult(_Strict):
     disconnected: bool
 
 
+class ModelCheckKeyParams(_Strict):
+    """Ask the vendor about a credential before it is stored."""
+
+    slug: str
+    # The key a form holds; empty for a local deployment, which is reached by
+    # address and has no key.
+    api_key: str = ""
+    api_base: str | None = None
+
+
+class ModelCheckKeyResult(_Strict):
+    """What the vendor said about the credential, and whether that refuses it.
+
+    ``refused`` is the one verdict that holds a key back from being stored: the
+    vendor itself answered this key with 401, or named it invalid. Every other
+    answer -- a catalogue that checks no keys, a vendor that cannot be reached,
+    a code nobody mapped -- is reported here and leaves the key worth storing.
+    """
+
+    ok: bool
+    status: str = Field(
+        description=(
+            "The probe's word: `valid`, `invalid_key`, `key_unchecked`, `no_credits`, `rate_limited`, "
+            "`network_error`, `proxy_unreachable`, `certificate_untrusted`, `no_probe_endpoint`, "
+            "`not_configured`, `unknown_provider`, `oauth_token_missing`, `http_NNN`; `unknown` when the probe "
+            "gave no word."
+        )
+    )
+    http_status: int | None = Field(None, description="The HTTP status the probe met, when it met one.")
+    models_count: int | None = Field(None, description="How many models the vendor listed, when it listed any.")
+    error: str | None = Field(None, description="What went wrong, when something did.")
+    refused: bool = Field(
+        description=(
+            "The vendor itself refused this key -- answered it with 401, or named it invalid -- so storing it "
+            "would store a key that cannot work. Every other answer leaves the key worth storing."
+        )
+    )
+
+
 class ModelRevealKeyParams(_Strict):
     slug: str
 
@@ -2269,6 +2424,14 @@ class ModelFetchModelsResult(_Strict):
     models: list[ModelCandidate]
     status: str
     error: str | None = None
+    refused: bool = Field(
+        default=False,
+        description=(
+            "With `verify`: the vendor itself refused the stored key -- answered it with 401, or named it invalid. "
+            "`invalid_key` alone is broader (a 403 maps to it too, and a 403 can mean a region, a plan or a proxy), "
+            "so a surface that says a key was rejected reads this, not the status."
+        ),
+    )
 
 
 class ModelAddModelParams(_Strict):
@@ -2827,6 +2990,17 @@ class SubagentCall(_Strict):
     )
     agent: str | None = Field(default=None, description="The external agent that ran it, or null for a raven subagent.")
     instance: str | None = Field(default=None, description="The handle sharing one stateful agent session, if any.")
+    instance_auto: bool | None = Field(
+        default=None,
+        description=(
+            "dag rows only: whether the node's current handle was minted for it rather than named by the "
+            "graph. Present only for a node that was reassigned."
+        ),
+    )
+    attempt_agents: list[str] | None = Field(
+        default=None,
+        description="dag rows only: the agent of each attempt of the node, in order. Present only after a reassignment.",
+    )
     started_at: str | None = Field(default=None, description="ISO 8601; the record stores epoch millis.")
     ended_at: str | None = Field(default=None, description="Absent while it is still running.")
     message_count: int = Field(..., description="What was asked, plus the answer once there is one.")
@@ -3006,7 +3180,13 @@ class SubagentsUpdateParams(_Strict):
         default=None,
         description="The Raven providers whose key an acp agent is started with; [] lends none.",
     )
-    model: str | None = None
+    model: str | None = Field(
+        default=None,
+        description=(
+            "A model from the row's `model_choices`. On an acp row the move re-measures the effort menu on the "
+            "new model, and a stored `effort` that menu does not offer is dropped; it is kept when the read fails."
+        ),
+    )
     provider: str | None = Field(
         default=None,
         description=(
@@ -3018,6 +3198,19 @@ class SubagentsUpdateParams(_Strict):
     clear_model: bool = Field(
         default=False,
         description="Drop the row's own model, reverting to the agent's default. Wins over `model` when both are sent.",
+    )
+    effort: str | None = Field(
+        default=None,
+        description=(
+            "A reasoning effort from the row's `effort_choices`, sent on every turn through the agent's "
+            "thought_level option, or as a session mode on an agent whose modes are its effort menu, where an "
+            "instance's own mode override takes its place. Refused when the row's menu does not offer it. Sent "
+            "with a model move, it is judged on the new model's menu, and refused when that menu could not be read."
+        ),
+    )
+    clear_effort: bool = Field(
+        default=False,
+        description="Drop the row's own effort, reverting to the agent's default. Wins over `effort` when both are sent.",
     )
 
 
@@ -3085,6 +3278,42 @@ class SubagentsTestCancelParams(_Strict):
 
 class SubagentsTestCancelResult(_Strict):
     cancelled: bool
+
+
+class SubagentsRefreshModelsParams(_Strict):
+    name: str
+    source: Literal["config", "preset", "vendored"] = "config"
+    force: bool = Field(
+        False,
+        description=(
+            "Read the agent's handshake even when its menu was just read. A reader that pressed refresh "
+            "after changing the menu in the agent itself means it; an automatic read on opening a picker "
+            "does not, and skips a handshake for a menu already read moments ago."
+        ),
+    )
+
+
+class SubagentsRefreshModelsResult(_Strict):
+    ok: bool = Field(
+        ...,
+        description="Whether the handshake answered and reported the menu. False leaves the recorded menu in place.",
+    )
+    detail: str = Field("", description="Why the menu could not be read, when it could not.")
+    models: list["SubagentModelChoice"] = Field(
+        ...,
+        description=(
+            "The menu now recorded for the agent, which is the previous one when this read failed. Each "
+            "choice is the agent's own id, name and group, exactly as ``subagents.list`` sends them."
+        ),
+    )
+    effort_choices: list["SubagentEffortChoice"] = Field(
+        default_factory=list,
+        description=(
+            "The effort menu recorded by the same read, in ``subagents.list``'s shape. A model-specific "
+            "menu (OpenCode 1.19.4) moves with the model, so it is sent beside the models rather than left "
+            "for a later listing."
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -3400,6 +3629,13 @@ class SubagentModelChoice(_Strict):
     value: str = Field(..., description="The id the agent takes back.")
     name: str = Field("", description="What the agent asked to be shown, usually far shorter than the value.")
     group: str = Field("", description="The agent's own bucketing, a provider typically. Empty when it offered none.")
+
+
+class SubagentEffortChoice(_Strict):
+    """One reasoning effort an agent offers, from its thought_level config option."""
+
+    value: str = Field(..., description="The value the agent takes back, e.g. low, high or max.")
+    name: str = Field("", description="What the agent asked to be shown, usually the same word.")
 
 
 class SubagentsInstanceSetModelParams(_Strict):
@@ -4016,8 +4252,9 @@ class TranscriptMessage(_Strict):
     replied_via_tool: bool | None = Field(
         default=None,
         description=(
-            "Set on one assistant entry of a turn whose reply the message tool sent to the turn's own chat: "
-            "the live turn's verdict, so a send that failed or went to another chat does not set it. The entry "
+            "Set on one assistant entry of a turn whose reader got its reply from a tool: a message-tool send "
+            "that went out (the tool hands every send to the turn's own reader, whatever chat the call names) or a "
+            "file delivery. A send that failed does not set it. The entry "
             "is the turn's last assistant entry with text or tool calls, not counting a notice the runtime files "
             "after the turn: the `silent` marker's entry when the turn ends on one, and otherwise, when its last "
             "reply had no text, the last entry that made a tool call, which need not be the call that sent the "
@@ -7091,6 +7328,7 @@ METHOD_MODELS: dict[str, tuple[type[BaseModel], type[BaseModel]]] = {
     "model.save_key": (ModelSaveKeyParams, ModelSaveKeyResult),
     "model.disconnect": (ModelDisconnectParams, ModelDisconnectResult),
     "model.reveal_key": (ModelRevealKeyParams, ModelRevealKeyResult),
+    "model.check_key": (ModelCheckKeyParams, ModelCheckKeyResult),
     "model.add_model": (ModelAddModelParams, ModelAddModelResult),
     "model.add_models": (ModelAddModelsParams, ModelAddModelsResult),
     "model.set_fields": (ModelSetFieldsParams, ModelSetFieldsResult),
@@ -7118,6 +7356,7 @@ METHOD_MODELS: dict[str, tuple[type[BaseModel], type[BaseModel]]] = {
     "subagents.probe": (SubagentsProbeParams, SubagentsProbeResult),
     "subagents.test": (SubagentsTestParams, SubagentsTestResult),
     "subagents.test_cancel": (SubagentsTestCancelParams, SubagentsTestCancelResult),
+    "subagents.refresh_models": (SubagentsRefreshModelsParams, SubagentsRefreshModelsResult),
     "machines.list": (MachinesListParams, MachinesListResult),
     "machines.add": (MachinesAddParams, MachinesAddResult),
     "machines.install_node": (MachinesInstallNodeParams, MachinesInstallNodeResult),

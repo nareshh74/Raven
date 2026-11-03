@@ -5953,6 +5953,22 @@
       "en": "Back to the default model",
       "zh": "清除，回到默认模型"
     },
+    "gui.agent.model_refresh": {
+      "en": "Refresh the model list",
+      "zh": "刷新模型列表"
+    },
+    "gui.agent.model_refresh_failed": {
+      "en": "Couldn't refresh the model list: {detail}",
+      "zh": "刷新模型列表失败：{detail}"
+    },
+    "gui.agent.effort_label": {
+      "en": "Effort",
+      "zh": "思考强度"
+    },
+    "gui.agent.effort_default": {
+      "en": "The agent's default",
+      "zh": "用它自己的默认"
+    },
     "gui.agent.model_no_provider": {
       "en": "Connect a provider first",
       "zh": "先接入一个模型供应商"
@@ -8221,6 +8237,14 @@
       "en": "This doesn't look like an API key: it has characters a key never contains. Check what was pasted",
       "zh": "这不像是 API key：里面有 Key 不会包含的字符，请检查粘贴的内容"
     },
+    "gui.settings.providers.key_refused": {
+      "en": "{vendor} rejected this key, so it was not saved: check that it is complete and is this vendor's key, then submit it again",
+      "zh": "{vendor} 不认这个 Key，没有保存：检查有没有复制全、是不是这家的 Key，改好再提交一次"
+    },
+    "gui.settings.providers.key_rejected": {
+      "en": "Key rejected",
+      "zh": "Key 被拒"
+    },
     "gui.settings.providers.base": {
       "en": "Service address",
       "zh": "服务地址"
@@ -9084,6 +9108,10 @@
     "gui.tasks.node_evidence": {
       "en": "Route evidence",
       "zh": "选路依据"
+    },
+    "gui.tasks.node_attempts": {
+      "en": "Attempts",
+      "zh": "尝试过的智能体"
     },
     "gui.tasks.node_sel_none": {
       "en": "(none)",

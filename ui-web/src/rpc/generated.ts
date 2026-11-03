@@ -3,7 +3,7 @@
 // Source of truth: rpc-schema/openrpc.json (OpenRPC 1.2.6).
 // Drift check: `npm run gen:check` (CI runs this; a stale file fails the build).
 //
-// 248 methods, 138 component schemas.
+// 250 methods, 138 component schemas.
 
 /* eslint-disable */
 /**
@@ -255,7 +255,7 @@ export interface TranscriptMessage {
    */
   silent?: boolean;
   /**
-   * Set on one assistant entry of a turn whose reply the message tool sent to the turn's own chat: the live turn's verdict, so a send that failed or went to another chat does not set it. The entry is the turn's last assistant entry with text or tool calls, not counting a notice the runtime files after the turn: the `silent` marker's entry when the turn ends on one, and otherwise, when its last reply had no text, the last entry that made a tool call, which need not be the call that sent the message. Such a turn answered whatever it ends on, and is not a Silent Turn.
+   * Set on one assistant entry of a turn whose reader got its reply from a tool: a message-tool send that went out (the tool hands every send to the turn's own reader, whatever chat the call names) or a file delivery. A send that failed does not set it. The entry is the turn's last assistant entry with text or tool calls, not counting a notice the runtime files after the turn: the `silent` marker's entry when the turn ends on one, and otherwise, when its last reply had no text, the last entry that made a tool call, which need not be the call that sent the message. Such a turn answered whatever it ends on, and is not a Silent Turn.
    */
   replied_via_tool?: boolean;
 }
@@ -848,9 +848,17 @@ export interface SubagentCall {
    */
   agent?: string;
   /**
-   * The handle sharing one stateful agent session, if any.
+   * The handle sharing one stateful agent session. Null for an agent that keeps no session, which is also how a stateless current attempt of a reassigned node reports itself.
    */
-  instance?: string;
+  instance?: string | null;
+  /**
+   * dag rows only: whether the node's current handle was minted for it rather than named by the graph. Present only for a node that was reassigned.
+   */
+  instance_auto?: boolean;
+  /**
+   * dag rows only: the agent of each attempt of the node, in order. Present only after a reassignment.
+   */
+  attempt_agents?: string[];
   /**
    * ISO 8601; the record stores epoch millis.
    */
@@ -989,6 +997,23 @@ export interface SubagentRow {
    * What subagents.update accepts for model on this row, by rule rather than by kind, and not ownership, which is own: raven for the built-in row and for one of raven's own acp rows whose handshake advertised no menu -- both pick from raven's own provider catalogue; agent for an acp row picking from the choices its handshake advertised (model_choices); fixed for an openai row, whose model is a plain config value, and for a cli row, which has no menu at all. The menu, not the whole vocabulary: one of raven's own acp rows also accepts a host-qualified id under either rule, since it runs on raven's providers whatever it advertised.
    */
   model_source?: 'raven' | 'agent' | 'fixed';
+  /**
+   * The reasoning effort this row sends, or null to use the agent's own. A value from effort_choices; set through the agent's thought_level config option, separately from model, or as a session mode on an agent whose modes are its effort menu.
+   */
+  effort?: string | null;
+  /**
+   * The reasoning efforts this row's agent offers on the row's own model: its thought_level option, or its mode menu when every mode is a reasoning level. Empty when it offers neither. An agent that packs effort into model ids instead has no such menu.
+   */
+  effort_choices?: {
+    /**
+     * The value the agent takes back, e.g. low, high or max.
+     */
+    value: string;
+    /**
+     * What the agent asked to be shown, usually the same word.
+     */
+    name?: string;
+  }[];
 }
 export interface ModelOptionProvider {
   slug: string;
@@ -1173,6 +1198,18 @@ export interface InstanceRow {
    * What the graph this instance belongs to was dispatched for. Absent, not empty, for an instance that came from no orchestration, so its presence is what says the row has a source.
    */
   runTitle?: string;
+  /**
+   * The agent of each attempt of this DAG node, in order. Present only on the row of a node that was reassigned, so its presence is what marks one; a run without a move carries no key.
+   */
+  attemptAgents?: string[];
+  /**
+   * The handle of the node's last attempt -- null when that attempt kept no session. Rides beside attemptAgents because the row's own handle is the node's name, not a conversation.
+   */
+  nodeInstance?: string | null;
+  /**
+   * Whether the node's current handle was minted for it rather than named by the graph. Present with attemptAgents; absent on every row of a run that never reassigned a node.
+   */
+  nodeInstanceAuto?: boolean;
   /**
    * When the turn this instance is answering right now began. Absent when it is answering none, so presence is what says the instance is working and the number is what says for how long. Not updatedAtMs, which every registry write stamps: a binding commit and a graph-origin write move it too, so it dates the row and not the turn.
    */
@@ -1379,7 +1416,7 @@ export interface NoticeEvent {
      */
     kind: string;
     /**
-     * What `kind` says it is: the blocking tool's own first line, the failed call's error category (or `empty_reply` / `thinking_only` for the wait before an empty-reply resend or a reasoning step-down), or the organ that dropped out. Empty for `silent_turn`.
+     * What `kind` says it is: the blocking tool's own first line, the failed call's error category (or `empty_reply` / `thinking_only` for the wait before an empty-reply resend or a reasoning step-down), or the organ that dropped out. For `silent_turn`, what the reply read as the marker had streamed before it was: a think block the model inlined ahead of it, which goes out as it comes, counted over the step it was drawn in (its call and a cut answer's continuations, or the wrap-up alone). A client that drew it takes back exactly that suffix of the step's text, and nothing it drew before. Empty when the reply showed nothing.
      */
     detail?: string;
     /**
@@ -1633,7 +1670,18 @@ export interface DagSnapshotNode {
   node: string;
   subagent?: string;
   depends_on?: string[];
-  instance?: string;
+  /**
+   * The stateful handle of the node's last attempt. Null for an agent that keeps no session, which is also how a stateless current attempt of a reassigned node reports itself.
+   */
+  instance?: string | null;
+  /**
+   * Whether the node's current handle was minted for it rather than named by the graph. Present only for a node that was reassigned, whose handle may have changed under it.
+   */
+  instance_auto?: boolean;
+  /**
+   * The agent of each attempt of this node, in order. Present only for a node that was reassigned; an empty list on every node would claim a move that never happened.
+   */
+  attempt_agents?: string[];
   status: DagSnapshotNodeStatus;
   started_at?: number;
   ended_at?: number;
@@ -1824,6 +1872,22 @@ export interface DagNodeUpdatedEvent {
      * The judge's supporting quote for the selection, at most 500 characters. Absent when it gave none.
      */
     route_evidence?: string;
+    /**
+     * The agent running the node now. Sent with every frame of a reassigned node from its new attempt's running update on, so a client that missed the reassignment still learns who has it.
+     */
+    subagent?: string;
+    /**
+     * The handle that attempt runs on, or null for an agent that keeps no session. A present null clears the handle a client was showing; an absent key means this frame does not speak for it.
+     */
+    instance?: string | null;
+    /**
+     * Whether that handle was minted for the node rather than named by the graph.
+     */
+    instance_auto?: boolean;
+    /**
+     * The agent of each attempt of this node, in order, sent on every frame of a reassigned node. A client uses the length to place a delayed frame in the attempt it belongs to.
+     */
+    attempt_agents?: string[];
   };
 }
 /**
@@ -1900,6 +1964,22 @@ export interface DagRunCompletedEvent {
        * The judge's supporting quote for the selection, at most 500 characters. Absent when it gave none.
        */
       route_evidence?: string;
+      /**
+       * The agent the node's last attempt ran on. Sent only for a node that was reassigned: every other node's frame already named it, and an unchanged one would only repeat that.
+       */
+      subagent?: string;
+      /**
+       * The handle that attempt ran on, or null when it kept no session. Sent with subagent.
+       */
+      instance?: string | null;
+      /**
+       * Whether that handle was minted for the node rather than named by the graph. Sent with subagent.
+       */
+      instance_auto?: boolean;
+      /**
+       * The agent of each attempt of this node, in order. Present only on a node that was reassigned.
+       */
+      attempt_agents?: string[];
     }[];
   };
 }
@@ -2403,6 +2483,14 @@ export interface TaskNode {
    * The stateful handle, named or minted. Null for a node of an agent that keeps no session.
    */
   instance?: string | null;
+  /**
+   * Whether the node's current handle was minted for it rather than named by the graph. Present only for a node that was reassigned, whose handle may have changed under it.
+   */
+  instance_auto?: boolean;
+  /**
+   * The agent of each attempt of this node, in order. Present only for a node that was reassigned; an empty list on every node would claim a move that never happened.
+   */
+  attempt_agents?: string[];
   status: DagSnapshotNodeStatus;
   /**
    * May name a node outside this task: node ids are the session's, and a later graph may depend on an earlier run's completed node.
@@ -3171,6 +3259,34 @@ export interface ModelRevealKeyResult {
    */
   api_key?: string | null;
 }
+export interface ModelCheckKeyParams {
+  slug: string;
+  api_key?: string;
+  api_base?: string;
+}
+export interface ModelCheckKeyResult {
+  ok: boolean;
+  /**
+   * The probe's word: `valid`, `invalid_key`, `key_unchecked`, `no_credits`, `rate_limited`, `network_error`, `proxy_unreachable`, `certificate_untrusted`, `no_probe_endpoint`, `not_configured`, `unknown_provider`, `oauth_token_missing`, `http_NNN`; `unknown` when the probe gave no word.
+   */
+  status: string;
+  /**
+   * The HTTP status the probe met, when it met one.
+   */
+  http_status?: number | null;
+  /**
+   * How many models the vendor listed, when it listed any.
+   */
+  models_count?: number | null;
+  /**
+   * What went wrong, when something did.
+   */
+  error?: string | null;
+  /**
+   * The vendor itself refused this key -- answered it with 401, or named it invalid -- so storing it would store a key that cannot work. Every other answer leaves the key worth storing.
+   */
+  refused: boolean;
+}
 export interface ModelFetchModelsParams {
   slug: string;
   verify?: boolean;
@@ -3182,6 +3298,10 @@ export interface ModelFetchModelsResult {
    */
   status: string;
   error?: string;
+  /**
+   * With `verify`: the vendor itself refused the stored key -- answered it with 401, or named it invalid. `invalid_key` alone is broader (a 403 maps to it too, and a 403 can mean a region, a plan or a proxy), so a surface that says a key was rejected reads this, not the status.
+   */
+  refused?: boolean;
 }
 export interface ModelAddModelParams {
   slug: string;
@@ -3400,6 +3520,9 @@ export interface SubagentsUpdateParams {
   mcps?: string[];
   allow_mcp_secrets?: boolean;
   lend_keys?: string[];
+  /**
+   * A model from the row's model_choices. On an acp row the move re-measures the effort menu on the new model, and a stored effort that menu does not offer is dropped; it is kept when the read fails.
+   */
   model?: string;
   /**
    * The provider whose credential serves model, for the built-in row: the id is stored naming it, the way config.set model stores the host's. Ignored for an acp row, whose values are the agent's own.
@@ -3409,6 +3532,14 @@ export interface SubagentsUpdateParams {
    * Drop the row's own model, reverting to the agent's default. Wins over model when both are sent.
    */
   clear_model?: boolean;
+  /**
+   * A reasoning effort from the row's effort_choices, sent on every turn through the agent's thought_level option, or as a session mode on an agent whose modes are its effort menu, where an instance's own mode override takes its place. Refused when the row's menu does not offer it. Sent with a model move, it is judged on the new model's menu, and refused when that menu could not be read.
+   */
+  effort?: string;
+  /**
+   * Drop the row's own effort, reverting to the agent's default. Wins over effort when both are sent.
+   */
+  clear_effort?: boolean;
 }
 export interface SubagentsUpdateResult {
   updated: boolean;
@@ -3461,6 +3592,51 @@ export interface SubagentsTestCancelParams {
 }
 export interface SubagentsTestCancelResult {
   cancelled: boolean;
+}
+export interface SubagentsRefreshModelsParams {
+  name: string;
+  source?: 'config' | 'preset' | 'vendored';
+  force?: boolean;
+}
+export interface SubagentsRefreshModelsResult {
+  /**
+   * Whether the handshake answered and reported the menu. False leaves the recorded menu in place.
+   */
+  ok: boolean;
+  /**
+   * Why the menu could not be read, when it could not.
+   */
+  detail?: string;
+  /**
+   * The menu now recorded for the agent, which is the previous one when this read failed.
+   */
+  models: {
+    /**
+     * The id the agent takes back.
+     */
+    value: string;
+    /**
+     * What the agent asked to be shown, usually far shorter than the value.
+     */
+    name?: string;
+    /**
+     * The agent's own bucketing, a provider typically. Empty when it offered none.
+     */
+    group?: string;
+  }[];
+  /**
+   * The effort menu recorded by the same read, in subagents.list's shape.
+   */
+  effort_choices?: {
+    /**
+     * The value the agent takes back, e.g. low, high or max.
+     */
+    value: string;
+    /**
+     * What the agent asked to be shown, usually the same word.
+     */
+    name?: string;
+  }[];
 }
 export interface SubagentsInstancesParams {
   session_key: string;
@@ -6495,6 +6671,7 @@ export interface RpcMethods {
   'model.save_key': { params: ModelSaveKeyParams; result: ModelSaveKeyResult };
   'model.disconnect': { params: ModelDisconnectParams; result: ModelDisconnectResult };
   'model.reveal_key': { params: ModelRevealKeyParams; result: ModelRevealKeyResult };
+  'model.check_key': { params: ModelCheckKeyParams; result: ModelCheckKeyResult };
   'model.fetch_models': { params: ModelFetchModelsParams; result: ModelFetchModelsResult };
   'model.add_model': { params: ModelAddModelParams; result: ModelAddModelResult };
   'model.add_models': { params: ModelAddModelsParams; result: ModelAddModelsResult };
@@ -6519,6 +6696,7 @@ export interface RpcMethods {
   'subagents.probe': { params: SubagentsProbeParams; result: SubagentsProbeResult };
   'subagents.test': { params: SubagentsTestParams; result: SubagentsTestResult };
   'subagents.test_cancel': { params: SubagentsTestCancelParams; result: SubagentsTestCancelResult };
+  'subagents.refresh_models': { params: SubagentsRefreshModelsParams; result: SubagentsRefreshModelsResult };
   'subagents.instances': { params: SubagentsInstancesParams; result: SubagentsInstancesResult };
   'subagents.instance.create': { params: SubagentsInstanceCreateParams; result: SubagentsInstanceCreateResult };
   'subagents.instance.history': { params: SubagentsInstanceHistoryParams; result: SubagentsInstanceHistoryResult };
@@ -6831,6 +7009,7 @@ export const RPC_METHODS = [
   "model.add_endpoint",
   "model.add_model",
   "model.add_models",
+  "model.check_key",
   "model.disconnect",
   "model.endpoints",
   "model.fetch_models",
@@ -6945,6 +7124,7 @@ export const RPC_METHODS = [
   "subagents.list",
   "subagents.presets",
   "subagents.probe",
+  "subagents.refresh_models",
   "subagents.remove",
   "subagents.test",
   "subagents.test_cancel",

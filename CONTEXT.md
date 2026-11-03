@@ -162,9 +162,16 @@ a brief; two labels may name one agent with different briefs, which is how a sin
 gets a worker per subject without registering an agent per pair. The label reaches the model
 as a live enum on `spawn`, `run_subagent_dag`, and `resolve_dag_node`, and resolves to the
 agent during DAG preflight or before a spawn dispatch, because a label resolves to no backend.
-The brief travels as a preamble on the task a worker is given. A stored Playbook's private DAG
+The brief travels as a preamble on the task a worker is given. A `reassign` deliberately
+names a roster agent rather than a label: the move takes the node out of this table, and
+the node keeps the Charter of the role it was submitted under (see **Charter**). A stored
+Playbook's private DAG
 tool never consults this turn-scoped table: its graph already names roster agents and carries
-its own authored prompts, so a coincidentally equal worker label cannot rewrite it.
+its own authored prompts, so a coincidentally equal worker label cannot rewrite it. When a
+completed run is saved as a Playbook, a worker-labelled node that finished on another agent
+keeps its role by gaining a derived delegate row named `<label>--reassign-<n>`, one per
+(role, finishing agent) pair; that row exists only in the saved Harness, and the turn-scoped
+table it came from is untouched.
 _Avoid_: reading the table itself as a permission. It decides who the dispatching model may
 hand work to; what a dispatched worker may then do is its Charter's business, applied in the
 worker's own process. And reading it as configuring the main agent: it does not. The main
@@ -181,6 +188,10 @@ allows -- a charter may take a tool away and may not hand one back, may shorten 
 and may not lengthen one -- which is what makes it safe to accept from another process. And
 reading a refused judge as a refusal: source the gate rejects is dropped with a log line, and
 a judge that raises has said nothing, so the declarative rules beside it still apply.
+A reassigned node keeps the Charter of the role it was submitted under, even when the move
+names a roster agent the table does not carry: the role, not the agent, is what the Charter
+was authored for, and its structured fields are enforced by the Raven transports only, the
+same as they already are for the role itself.
 
 **Turn Runner**:
 The behavioural `Protocol` seam between Spine and an agent implementation:
@@ -248,8 +259,14 @@ the stable schema.
 **Session Tier** (`medium`/`high`/`max`; `TIER_LADDER` in `config/schema.py`):
 What the shipped built-in Session Mode catalogue moves in place of an iteration cap or an
 overlay: a session's current mode id (`session_policy(key).mode`, falling through to the
-catalogue's default) is offered to every sub-agent that session dispatches, as the effort
-level to run it at. `clamp_tier` (`agent/subagent/mode_tiers.py`) is the clamp that lands
+catalogue's default) is offered to every sub-agent that session dispatches whose handshake
+advertised a mode menu, as the effort level to run it at. An agent that advertises no modes
+is offered no tier and runs on its own default (`TierDecline.NO_SHARED_RUNG`), and its
+instances take no mode override: `subagents.instance.set_mode` refuses, naming the empty
+menu. The Mirasim adapter is such an agent: it advertises its effort rungs as a
+`thought_level` config option rather than as session modes, so once its capability snapshot
+is measured the tier does not reach a Mirasim agent, and a Mirasim turn runs on the
+**Row Effort**, else on Mirasim's own default. `clamp_tier` (`agent/subagent/mode_tiers.py`) is the clamp that lands
 it on one sub-agent: the nearest rung at or below on that agent's own probed menu, or
 `None` -- leave the agent on its own default -- in three cases. A tier outside the ladder
 (another vocabulary, "nearest" undefined); a menu sharing no rung with it at all; and a menu
@@ -257,8 +274,10 @@ carrying a rung the ladder cannot rank at the point where raising the effort is 
 move left, since the cheapest rung the ladder can *see* may not be the cheapest the agent
 has. An agent that converges on the ladder plus an id of its own still clamps on the real
 overlap, and an exact hit is honoured in any vocabulary that spells the rung the same way.
-Exactly one thing outranks it, and a person sets it: a standing override on a named instance
-(`subagents.instance.set_mode`). There is no per-dispatch mode -- the model composing a
+Two things outrank it. A person's standing override on a named instance
+(`subagents.instance.set_mode`), which `resolve_mode` sends in its place; and, on an agent
+whose mode menu is its effort menu, the **Row Effort**, sent in its place on the same
+channel -- the tier goes out only when there is none, or when the agent refuses it. Of those two the instance override ranks first. There is no per-dispatch mode -- the model composing a
 `spawn` cannot know what the operator chose, so `resolve_mode` takes no such argument and
 the spawn schema offers none.
 The three built-in descriptions are `raven.i18n` message ids resolved in
@@ -273,6 +292,28 @@ exactly what it declines to guess at.
 _Avoid_: putting the scope of the control on the rungs. Each row says only what
 distinguishes it; that raven's own effort is unchanged is stated once by whichever surface
 draws the control.
+
+**Row Effort** (`effort` on an acp entry in `subagents.agents[]`; `SubagentManager.session_effort_for`):
+The reasoning effort an operator sets on one acp row, sent to every session that row's
+dispatches open; a spawn, a direct chat and a DAG node all resolve it through
+`session_effort_for`. It travels on the channel the agent advertises effort on: its
+`thought_level` config option (OpenCode 1.19.4, the Mirasim adapter), or, on an agent whose
+mode menu is made only of level names with at least one besides `default` and `none` (Pi,
+Grok, Kimi, DSH; `mode_efforts`), `session/set_mode`, where it is sent in place of the
+**Session Tier** and so outranks it. On that
+shared channel a person's standing mode override on a named instance outranks the Row
+Effort in turn, and the row's value is withheld for that instance; on a `thought_level`
+agent the two are separate channels and both are sent. The menu it is picked from is the
+one the probe measured on the row's own model (`verify_agent` puts the row's model on its
+throwaway session first), and moving a row to another model re-measures it there
+(`subagents.update`): a stored Row Effort that menu lacks is dropped, and kept when the
+read fails, since nothing measured then says otherwise. The menu a live session reports
+after a model switch belongs to that session and never rewrites the row's, but it decides
+what that session is sent: an instance moved to a model whose menu lacks the Row Effort is
+not sent it. A cleared Row Effort sends the session back to what it would otherwise be on,
+from a record held per agent and parent binding (`_SESSION_STATE`) for as long as an
+instance can resume that session -- across the pool closing the idle agent and reloading
+the session in a new process, though not across a Raven restart.
 
 **Subagent** (`agent/subagent/`):
 A background agent task spawned by `SubagentManager`. Runs with its own tool set; its result
@@ -814,11 +855,15 @@ _Avoid_: "shadow git" as the term — Checkpoint is the per-turn snapshot it pro
 **Silence Marker** (`agent/context/silence.py`):
 What a model answers with to say a turn has nothing to report: `[SILENT]`, `SILENT`, `NO_REPLY`
 or `NO REPLY` (`SILENCE_MARKERS`); `SILENCE_INSTRUCTION` is the two sentences that teach the
-bracketed form. The turn's `Origin` picks the rule, in one place (`is_silence`). A `USER` turn, or
-one with no origin, is never taught a marker, so it honours only `[SILENT]` itself with nothing but
-whitespace around it: a one-word answer such as `Silent.` or `No reply.` is the person's answer, and
-is delivered. A turn from a proactive origin -- `SENTINEL`, `CRON`, `HEARTBEAT` or `SUBAGENT` --
-reads the whole set by two rules: the strict one (`is_exact_silence`), a reply that is exactly a
+bracketed form. The turn's `Origin`, and whether its prompt taught the marker, pick the rule, in one
+place (`is_silence`). A turn whose prompt does not end with `SILENCE_INSTRUCTION`
+(`teaches_silence`) honours only `[SILENT]` itself with nothing but whitespace around it: a `USER`
+turn, one with no origin, and a proactive one that was never taught -- a heartbeat task, a
+sub-agent's relayed result, a sentinel notice. There a one-word answer such as `Silent.` or
+`No reply.`, or a reply ending on one, is the model's answer, and is delivered. A turn from a
+proactive origin (`PROACTIVE_ORIGINS`) whose prompt ends with it -- the cron reminder, a cron wake,
+and a sub-agent's unprompted report --
+reads the whole set by two rules (`reads_loose_silence`): the strict one (`is_exact_silence`), a reply that is exactly a
 marker, with case, edge whitespace and stray edge punctuation forgiven up to `SILENCE_MAX_CHARS`;
 and the loose one (`is_loose_silence`): nobody is waiting on such a turn and models wrap the marker
 in a note on why they stayed quiet, so a marker alone on the first or last line, or a bracketed
@@ -840,13 +885,16 @@ bracket goes out at once), reads past an inline think block the way the loop doe
 as it arrives, and what follows it is held; a closing tag with no block open is debris, as the loop
 reads it, and does not end the hold), keeps holding across a stream cut while the reply could
 still be the marker, and drops what it held when the loop reads the reply as
-a marker (a turn from a proactive origin, whose marker may close a report, holds the
+a marker (a turn that reads the loose rule, whose marker may close a report, holds the
 whole call instead). An exhausted turn's wrap-up is gated and read the same way. The marker row
-stays in the history holding the model's whole reply -- the marker, or, from a proactive origin,
+stays in the history holding the model's whole reply -- the marker, or, under the loose rule,
 the note around it -- filed with `silent: true` so a reload does not read it as an answer, and it
 carries the turn's Response Meta. The turn reports itself as
 `TurnOutcome.silent` and, for a surface drawing it live, as a closing `NoticeKind.SILENT_TURN`
-notice. The kernel holds no marker rules -- they live in `agent/context/silence.py` -- and the
+notice. Its detail is what that reply had streamed before it was read as the marker -- at most a
+think block the model inlined ahead of it -- counted over the step a reader draws it in (its call and
+a cut answer's continuations, or the wrap-up alone; `LoopOutcome.shown`), so a client takes back
+exactly that suffix of the step's text and keeps the narration before it. The kernel holds no marker rules -- they live in `agent/context/silence.py` -- and the
 spine's `TurnEnded` carries no flag of its own; what the kernel names of silence is the outcome
 (`TurnOutcome.silent`), the notice (`NoticeKind.SILENT_TURN`) and which origins are proactive
 (`PROACTIVE_ORIGINS`).
@@ -855,9 +903,10 @@ The `after_send` hook chain still runs, with
 queued for the next reply, and the personalizer learns nothing; text a hook composes there is
 delivered as the reply, the closing row is filed as that text rather than the marker, and the turn
 is then not silent. A turn the message tool has already answered (`MessageTool.sent_in_turn`: a send
-to the turn's own chat that went out) is not a Silent Turn whatever it ends on -- its answer reached
-the reader, so no
-`SILENT_TURN` notice goes out; a marker it ends on is still filed `silent: true`, so a reload
+that went out, which the tool hands to the turn's own reader whatever chat the call names), or one in
+which a tool delivered files the reader now holds, is not a Silent Turn whatever it ends on -- its
+answer reached the reader, so no `SILENT_TURN` notice goes out and the turn reports an explicit
+reply rather than `TurnOutcome.silent`; a marker it ends on is still filed `silent: true`, so a reload
 draws the muted line after the delivered reply where the live view drew none. The turn's last
 assistant row with text or tool calls -- the marker's row when it ends on one, else, after an empty
 closing reply, which is not stored, its last tool call, not necessarily the send; never a notice the
@@ -865,7 +914,11 @@ runtime files after the turn -- carries that live verdict as `replied_via_tool`,
 surfaces that read a stored turn -- the ACP replay, which draws it, and the session list, which
 orders sessions by it -- read the flag from
 one place (`session/turn_shape.py`) rather than guess it from the calls they can see, where a send
-that failed or went to another chat would look like an answer.
+that failed would look like an answer. Which turns they take back whole is one rule in the same
+module (`TakeBack`), read by both and by the live turn: a turn the runtime opened that ends on a
+marker no tool answered goes, the marker's row closing it. Such a turn files no unanswered-question
+notice after its marker, so none is left behind as an orphan; a person's Silent Turn, which they
+keep, still files it.
 Distinct from a `no_output` failure. A Silent Turn is the model saying nothing on purpose, so it
 succeeds; `no_output` is what a turn is failed with when its last reply was empty -- no text, no
 tool call, no reasoning -- once every retry was spent, or, with recovery switched off, when its
@@ -896,13 +949,18 @@ continued rather than taken for silence, and a stream that had already received 
 keeps it, so the refusal is handled as one rather than continued. The model is asked to go on, and
 the parts are joined, up to `MAX_CONTINUATIONS` times,
 after which the partial is delivered with `PARTIAL_STREAM_NOTE` as an `interrupted` turn. A
-continuation that comes back empty leaves what streamed as the answer, and so does one that is a
-marker on its own, unless the cut left a think block open, when it is read only joined to what came
-before it; one that comes back as an
-error, a stream cut off before any new text included, ends the turn at once on the partial with
-the note, as `interrupted`, with no wait and no fallback model -- and so does a turn that runs out
-of iterations or time while a continuation is still owed, with no wrap-up. On each of those exits
-the reply the turn ends on is the joined parts with their closed think blocks taken out of the whole
+continuation that comes back empty leaves what streamed as the answer, and on a person's turn, which
+showed what streamed, so does one that is a marker on its own; a turn that reads the loose rule showed
+nothing of it, so there such a marker is read with what came before it, on its own line, as the
+reply uncut would be. Either way a continuation inside a think block the cut left open is read only
+joined to what came before it. One that comes back as an error, a stream cut off before any new text
+included, ends the turn at once on the partial with the note, as `interrupted`, with no wait and no
+fallback model, and so does a turn that runs out of iterations or time while a continuation is still
+owed, with no wrap-up. One that raises ends on the partial the same way, but not at once: only after
+`stream_llm_call` has spent its reconnects and, on a failure it still reads as transient, waited out
+`llm_error_retry_delays` (15, 30 and 60 seconds by default), with no retry notice shown.
+On each of those exits the reply the turn ends on is the joined parts with their closed think blocks
+taken out of the whole
 -- a cut can split one -- and a block still unclosed left in as text, read for a Silence Marker by
 the turn's rule as a reply with no cut is, and
 one that is a marker ends the turn as a **Silent Turn**: nothing of it shown, its row filed
@@ -3813,7 +3871,7 @@ subsystem; this one judges a single DAG node's output against its own prompt and
 follow-ups.
 
 **exception** (node status) -- a DAG node that did not accomplish its task and is
-waiting for the main agent to decide whether to continue, abandon, or replan it.
+waiting for the main agent to decide whether to continue, abandon, reassign or replan it.
 Reached by two routes: the backend raised, or the backend returned and the
 verdict said the task was not accomplished. Non-terminal: its dependents stay
 `pending` rather than cascading to `skipped`.
@@ -3907,6 +3965,43 @@ naming it. A completed node of the old run is reused by reference (`depends_on` 
 adjudicated node and no attempt budget crosses the boundary.
 _Avoid_: "reorchestrate" -- orchestration is what the main agent does with graphs generally;
 this names one decision about one graph.
+
+**reassign** (adjudication decision; `raven/agent/subagent/dag_adjudication.py`) -- the answer
+to an exception report that changes who runs the node next instead of what it is: the main
+agent names another enabled roster agent and a message, and the next attempt of the node runs
+there. It keeps the node's id, its task, its dependencies and its dependents, and the run is
+neither stopped nor replaced; only the agent and its session change. It spends one
+continuation as `continue` does, and the attempt budget is not reset. A node on an `instance`
+takes the run's other unfinished nodes on that instance with it, and a shared instance
+requires a `[stateful]` target. The new agent's first prompt is a **Handover**. A stint round
+cannot be reassigned: its roles are the compiled role table's.
+_Avoid_: "retry on another agent" -- that names the effect, not the decision; and "replan",
+which replaces the graph rather than the agent.
+
+**Handover** (`raven/agent/subagent/dag_handover.py`) -- the text that seeds a reassigned
+node's new agent: the earlier turns of the source conversation as plain `User:` / `Assistant:`
+text inside a `<handover>` block, a fixed sentence saying the conversation continues, then the
+message that attempt would otherwise dispatch with -- the main agent's reassign message for
+the node it answered, or a moved sibling's own prompt when that sibling dispatches first.
+Drawn from the old agent's Instance Log when the node's last attempt ran on a handle and that
+log proves it holds every archived attempt of the node; otherwise from the node's own attempt
+archives, with a notice when a recorded instance history was expected but could not be used.
+For a moved instance group the turns are the instance's whole conversation, and whichever
+moved node dispatches first plants them. It carries visible text only -- no tool calls, no
+tool output and none of the old agent's private context -- and a `[failed]` row, which holds
+the verdict or the error, is left out, so the main agent states what went wrong in its
+message. Carried text is escaped so it can neither open a turn of its own nor close the block
+early; that escape is a framing guard, not a sanitizer for instructions inside the text.
+Each carried answer is also wrapped with `wrap_untrusted` (`source="subagent"`), and a
+handover carried inside an earlier user row is fenced the same way, because both are
+sub-agent output by construction (the fence rule below); the task, the person's and the
+main agent's words, and the raven-minted trailer stay unfenced. A steer row is fenced
+too: the collector records one for any user chunk that differs from the prompt, including
+a chunk the agent process or a remote host emitted, so its provenance is not the person's
+word by construction.
+_Avoid_: "handoff" -- the **Handoff Block** (`raven/agent/subagent/direct_chat.py`) is the
+raven-minted pointer block in the main agent's next turn after Direct Chat activity, and it
+carries no transcript text.
 
 **outbox** (`raven/agent/subagent/dag_adjudication.py`) -- a foreground DAG run's tray of
 events: its nodes' exception reports and its final result, waiting for the tool call

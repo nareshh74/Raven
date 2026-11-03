@@ -1282,6 +1282,81 @@
       "errors": []
     },
     {
+      "name": "model.check_key",
+      "summary": "What the vendor says about a credential before it is stored: the stored section with these fields laid over it is probed the way `model.fetch_models` with `verify` probes a saved key. A read -- nothing is written, whatever the answer.",
+      "params": [
+        {
+          "name": "slug",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "api_key",
+          "description": "The key to try; empty for a local deployment, which is reached by address and has no key.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "api_base",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "ModelCheckKeyResult",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "ok",
+            "status",
+            "refused"
+          ],
+          "properties": {
+            "ok": {
+              "type": "boolean"
+            },
+            "status": {
+              "type": "string",
+              "description": "The probe's word: `valid`, `invalid_key`, `key_unchecked`, `no_credits`, `rate_limited`, `network_error`, `proxy_unreachable`, `certificate_untrusted`, `no_probe_endpoint`, `not_configured`, `unknown_provider`, `oauth_token_missing`, `http_NNN`; `unknown` when the probe gave no word."
+            },
+            "http_status": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "description": "The HTTP status the probe met, when it met one."
+            },
+            "models_count": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "description": "How many models the vendor listed, when it listed any."
+            },
+            "error": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "What went wrong, when something did."
+            },
+            "refused": {
+              "type": "boolean",
+              "description": "The vendor itself refused this key -- answered it with 401, or named it invalid -- so storing it would store a key that cannot work. Every other answer leaves the key worth storing."
+            }
+          }
+        }
+      },
+      "errors": []
+    },
+    {
       "name": "model.fetch_models",
       "summary": "What a provider can serve: the bundled catalogue unioned with whatever the vendor names when it can be reached. Each row carries the registry's name and tags, its window, the bucket it filters into, whether this provider's list already has it, and which source it came from. A read -- nothing is written until a row is added.",
       "params": [
@@ -1323,6 +1398,10 @@
             },
             "error": {
               "type": "string"
+            },
+            "refused": {
+              "type": "boolean",
+              "description": "With `verify`: the vendor itself refused the stored key -- answered it with 401, or named it invalid. `invalid_key` alone is broader (a 403 maps to it too, and a 403 can mean a region, a plan or a proxy), so a surface that says a key was rejected reads this, not the status."
             }
           }
         }
@@ -2401,7 +2480,8 @@
           "name": "model",
           "required": false,
           "schema": {
-            "type": "string"
+            "type": "string",
+            "description": "A model from the row's model_choices. On an acp row the move re-measures the effort menu on the new model, and a stored effort that menu does not offer is dropped; it is kept when the read fails."
           }
         },
         {
@@ -2418,6 +2498,22 @@
           "schema": {
             "type": "boolean",
             "description": "Drop the row's own model, reverting to the agent's default. Wins over model when both are sent."
+          }
+        },
+        {
+          "name": "effort",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "description": "A reasoning effort from the row's effort_choices, sent on every turn through the agent's thought_level option, or as a session mode on an agent whose modes are its effort menu, where an instance's own mode override takes its place. Refused when the row's menu does not offer it. Sent with a model move, it is judged on the new model's menu, and refused when that menu could not be read."
+          }
+        },
+        {
+          "name": "clear_effort",
+          "required": false,
+          "schema": {
+            "type": "boolean",
+            "description": "Drop the row's own effort, reverting to the agent's default. Wins over effort when both are sent."
           }
         }
       ],
@@ -2699,6 +2795,113 @@
         }
       },
       "errors": []
+    },
+    {
+      "name": "subagents.refresh_models",
+      "summary": "Re-read an acp agent's model menu from its handshake, free of prompts. The menu can move while the agent's launch config stays identical (Mirasim adds the user's provider profiles to its catalog), which nothing marks stale: this opens the agent's session once, reads the choices it advertises, records them, and returns the menu now in force. A failed read keeps the recorded menu and answers ok: false with the reason, so a picker can show the old list rather than emptying. force reads even when the menu was just read; an automatic ask skips a handshake for a menu read moments ago.",
+      "params": [
+        {
+          "name": "name",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "source",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": [
+              "config",
+              "preset",
+              "vendored"
+            ]
+          }
+        },
+        {
+          "name": "force",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        }
+      ],
+      "result": {
+        "name": "SubagentsRefreshModelsResult",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "ok",
+            "models"
+          ],
+          "properties": {
+            "ok": {
+              "type": "boolean",
+              "description": "Whether the handshake answered and reported the menu. False leaves the recorded menu in place."
+            },
+            "detail": {
+              "type": "string",
+              "description": "Why the menu could not be read, when it could not."
+            },
+            "models": {
+              "type": "array",
+              "description": "The menu now recorded for the agent, which is the previous one when this read failed.",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "value"
+                ],
+                "properties": {
+                  "value": {
+                    "type": "string",
+                    "description": "The id the agent takes back."
+                  },
+                  "name": {
+                    "type": "string",
+                    "description": "What the agent asked to be shown, usually far shorter than the value."
+                  },
+                  "group": {
+                    "type": "string",
+                    "description": "The agent's own bucketing, a provider typically. Empty when it offered none."
+                  }
+                }
+              }
+            },
+            "effort_choices": {
+              "type": "array",
+              "description": "The effort menu recorded by the same read, in subagents.list's shape.",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "value"
+                ],
+                "properties": {
+                  "value": {
+                    "type": "string",
+                    "description": "The value the agent takes back, e.g. low, high or max."
+                  },
+                  "name": {
+                    "type": "string",
+                    "description": "What the agent asked to be shown, usually the same word."
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "errors": [
+        {
+          "$ref": "#/components/errors/SubagentNotFound"
+        },
+        {
+          "$ref": "#/components/errors/ConfigFieldReadonly"
+        }
+      ]
     },
     {
       "name": "subagents.instances",
@@ -12489,7 +12692,7 @@
             "type": "boolean"
           },
           "replied_via_tool": {
-            "description": "Set on one assistant entry of a turn whose reply the message tool sent to the turn's own chat: the live turn's verdict, so a send that failed or went to another chat does not set it. The entry is the turn's last assistant entry with text or tool calls, not counting a notice the runtime files after the turn: the `silent` marker's entry when the turn ends on one, and otherwise, when its last reply had no text, the last entry that made a tool call, which need not be the call that sent the message. Such a turn answered whatever it ends on, and is not a Silent Turn.",
+            "description": "Set on one assistant entry of a turn whose reader got its reply from a tool: a message-tool send that went out (the tool hands every send to the turn's own reader, whatever chat the call names) or a file delivery. A send that failed does not set it. The entry is the turn's last assistant entry with text or tool calls, not counting a notice the runtime files after the turn: the `silent` marker's entry when the turn ends on one, and otherwise, when its last reply had no text, the last entry that made a tool call, which need not be the call that sent the message. Such a turn answered whatever it ends on, and is not a Silent Turn.",
             "type": "boolean"
           }
         },
@@ -13879,8 +14082,22 @@
             "description": "The external agent that ran it, or null for a raven subagent."
           },
           "instance": {
-            "type": "string",
-            "description": "The handle sharing one stateful agent session, if any."
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The handle sharing one stateful agent session. Null for an agent that keeps no session, which is also how a stateless current attempt of a reassigned node reports itself."
+          },
+          "instance_auto": {
+            "type": "boolean",
+            "description": "dag rows only: whether the node's current handle was minted for it rather than named by the graph. Present only for a node that was reassigned."
+          },
+          "attempt_agents": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "dag rows only: the agent of each attempt of the node, in order. Present only after a reassignment."
           },
           "started_at": {
             "type": "string",
@@ -14112,6 +14329,34 @@
               "fixed"
             ],
             "description": "What subagents.update accepts for model on this row, by rule rather than by kind, and not ownership, which is own: raven for the built-in row and for one of raven's own acp rows whose handshake advertised no menu -- both pick from raven's own provider catalogue; agent for an acp row picking from the choices its handshake advertised (model_choices); fixed for an openai row, whose model is a plain config value, and for a cli row, which has no menu at all. The menu, not the whole vocabulary: one of raven's own acp rows also accepts a host-qualified id under either rule, since it runs on raven's providers whatever it advertised."
+          },
+          "effort": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The reasoning effort this row sends, or null to use the agent's own. A value from effort_choices; set through the agent's thought_level config option, separately from model, or as a session mode on an agent whose modes are its effort menu."
+          },
+          "effort_choices": {
+            "type": "array",
+            "description": "The reasoning efforts this row's agent offers on the row's own model: its thought_level option, or its mode menu when every mode is a reasoning level. Empty when it offers neither. An agent that packs effort into model ids instead has no such menu.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "value"
+              ],
+              "properties": {
+                "value": {
+                  "type": "string",
+                  "description": "The value the agent takes back, e.g. low, high or max."
+                },
+                "name": {
+                  "type": "string",
+                  "description": "What the agent asked to be shown, usually the same word."
+                }
+              }
+            }
           }
         }
       },
@@ -14484,6 +14729,24 @@
           "runTitle": {
             "type": "string",
             "description": "What the graph this instance belongs to was dispatched for. Absent, not empty, for an instance that came from no orchestration, so its presence is what says the row has a source."
+          },
+          "attemptAgents": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The agent of each attempt of this DAG node, in order. Present only on the row of a node that was reassigned, so its presence is what marks one; a run without a move carries no key."
+          },
+          "nodeInstance": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The handle of the node's last attempt -- null when that attempt kept no session. Rides beside attemptAgents because the row's own handle is the node's name, not a conversation."
+          },
+          "nodeInstanceAuto": {
+            "type": "boolean",
+            "description": "Whether the node's current handle was minted for it rather than named by the graph. Present with attemptAgents; absent on every row of a run that never reassigned a node."
           },
           "turnStartedAtMs": {
             "type": "integer",
@@ -14942,7 +15205,7 @@
               "detail": {
                 "type": "string",
                 "default": "",
-                "description": "What `kind` says it is: the blocking tool's own first line, the failed call's error category (or `empty_reply` / `thinking_only` for the wait before an empty-reply resend or a reasoning step-down), or the organ that dropped out. Empty for `silent_turn`."
+                "description": "What `kind` says it is: the blocking tool's own first line, the failed call's error category (or `empty_reply` / `thinking_only` for the wait before an empty-reply resend or a reasoning step-down), or the organ that dropped out. For `silent_turn`, what the reply read as the marker had streamed before it was: a think block the model inlined ahead of it, which goes out as it comes, counted over the step it was drawn in (its call and a cut answer's continuations, or the wrap-up alone). A client that drew it takes back exactly that suffix of the step's text, and nothing it drew before. Empty when the reply showed nothing."
               },
               "transient": {
                 "type": "boolean",
@@ -15688,7 +15951,22 @@
             }
           },
           "instance": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The stateful handle of the node's last attempt. Null for an agent that keeps no session, which is also how a stateless current attempt of a reassigned node reports itself."
+          },
+          "instance_auto": {
+            "type": "boolean",
+            "description": "Whether the node's current handle was minted for it rather than named by the graph. Present only for a node that was reassigned, whose handle may have changed under it."
+          },
+          "attempt_agents": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The agent of each attempt of this node, in order. Present only for a node that was reassigned; an empty list on every node would claim a move that never happened."
           },
           "status": {
             "$ref": "#/components/schemas/DagSnapshotNodeStatus"
@@ -16053,6 +16331,28 @@
               "route_evidence": {
                 "description": "The judge's supporting quote for the selection, at most 500 characters. Absent when it gave none.",
                 "type": "string"
+              },
+              "subagent": {
+                "description": "The agent running the node now. Sent with every frame of a reassigned node from its new attempt's running update on, so a client that missed the reassignment still learns who has it.",
+                "type": "string"
+              },
+              "instance": {
+                "description": "The handle that attempt runs on, or null for an agent that keeps no session. A present null clears the handle a client was showing; an absent key means this frame does not speak for it.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "instance_auto": {
+                "description": "Whether that handle was minted for the node rather than named by the graph.",
+                "type": "boolean"
+              },
+              "attempt_agents": {
+                "description": "The agent of each attempt of this node, in order, sent on every frame of a reassigned node. A client uses the length to place a delayed frame in the attempt it belongs to.",
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
               }
             }
           }
@@ -16243,6 +16543,28 @@
                     "route_evidence": {
                       "description": "The judge's supporting quote for the selection, at most 500 characters. Absent when it gave none.",
                       "type": "string"
+                    },
+                    "subagent": {
+                      "description": "The agent the node's last attempt ran on. Sent only for a node that was reassigned: every other node's frame already named it, and an unchanged one would only repeat that.",
+                      "type": "string"
+                    },
+                    "instance": {
+                      "description": "The handle that attempt ran on, or null when it kept no session. Sent with subagent.",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "instance_auto": {
+                      "description": "Whether that handle was minted for the node rather than named by the graph. Sent with subagent.",
+                      "type": "boolean"
+                    },
+                    "attempt_agents": {
+                      "description": "The agent of each attempt of this node, in order. Present only on a node that was reassigned.",
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
                     }
                   }
                 }
@@ -17414,6 +17736,17 @@
               "null"
             ],
             "description": "The stateful handle, named or minted. Null for a node of an agent that keeps no session."
+          },
+          "instance_auto": {
+            "type": "boolean",
+            "description": "Whether the node's current handle was minted for it rather than named by the graph. Present only for a node that was reassigned, whose handle may have changed under it."
+          },
+          "attempt_agents": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The agent of each attempt of this node, in order. Present only for a node that was reassigned; an empty list on every node would claim a move that never happened."
           },
           "status": {
             "$ref": "#/components/schemas/DagSnapshotNodeStatus"

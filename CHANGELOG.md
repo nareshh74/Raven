@@ -230,6 +230,25 @@ All notable changes to Raven are documented here.
   guessing. Playbooks carry the same three fields, and the TUI's DAG panel and
   the web tasks list show what each node's branch did.
 
+- A DAG node that cannot do its job can be **reassigned** to another agent on
+  the roster instead of being continued, abandoned or replanned:
+  `resolve_dag_node` takes `decision: "reassign"` with the target `agent` and a
+  `message`, keeps the node's id, task, dependencies and place in the graph, and
+  spends one continuation like `continue` (the attempt budget is not reset). The
+  new agent opens on a **handover** of the visible conversation so far -- the
+  node's task and the answers, without the old agent's tool calls, tool output or
+  private context -- so the message has to say what went wrong. A node on an
+  `instance` takes the instance's other unfinished nodes in that run with it,
+  which requires a `[stateful]` target when the instance was shared; a named
+  instance the new agent already holds is refused, and a `confirm: true` run asks
+  the user again. When either agent runs on a registered machine, the result says
+  the earlier attempts' files stay where they were made. Not supported on a stint
+  round, whose roles the role table fixes. The exception report now names the
+  agent that dispatched the attempt that just ended, lists every earlier attempt
+  with a bounded reason, and teaches the four decisions with a copyable
+  `reassign` invocation; the TUI's DAG panel and the web task pane show each
+  node's attempt history.
+
 - The image and video roles run on MiniMax. Settings > Model offers MiniMax's
   two API-key providers (`minimax`, `minimax_cn_api`) for both roles, and a
   section naming one takes that provider's address and key and calls
@@ -442,6 +461,12 @@ All notable changes to Raven are documented here.
   its task fails on the judge's reason. A host with no model to judge with
   refuses a graph that declares routes.
 
+- The research agent's `high` mode closes a dry search streak as soon as
+  `medium` and `max` do: its overlay sets `search.saturation.k` to 5 instead
+  of 10, so each rung of the saturation ladder (widen the result list, open
+  the next page, close search) fires after five consecutive searches that
+  surface nothing new rather than ten.
+
 ### Removed
 
 - The built-in `deep_research` tool is gone, along with the stand-in that
@@ -516,6 +541,19 @@ All notable changes to Raven are documented here.
   from the session's mode overlay.
 
 ### Fixed
+
+- A key the vendor refuses is no longer called connected. The settings page
+  and the first-run wizard ask the vendor about a key before storing it
+  (`model.check_key`): a key answered with 401, or named invalid, is refused
+  with the reason in the form and nothing is written, where before it was
+  stored, marked **Connected** and reported as rejected on the same row. A
+  stored key the vendor refuses when it is checked again (the row's Check or
+  Retry, or a connect) reads **Key rejected** on its row.
+  `raven onboard` and `raven provider test` confirm the key itself at the
+  vendor's key endpoint where the model list answers anyone (OpenRouter),
+  instead of reporting "Connected! (468 models available)" for a key the
+  vendor has never issued; a list that cannot confirm a key says so instead
+  of claiming it valid.
 
 - A job the on-call agent hands off on Windows now outlives the Raven host that
   launched the agent. The host starts the handed-off relay itself, outside the

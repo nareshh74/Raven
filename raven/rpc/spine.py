@@ -74,6 +74,16 @@ def _present(source: dict, keys: tuple[str, ...]) -> dict:
     return {key: source[key] for key in keys if source.get(key) is not None}
 
 
+def _present_exact(source: dict, keys: tuple[str, ...]) -> dict:
+    """The given keys the source set at all, null included.
+
+    For the fields whose presence is the message: a reassigned node's
+    ``instance`` is null when its current attempt keeps no session, and dropping
+    that for looking empty would leave a client showing a handle the node left.
+    """
+    return {key: source[key] for key in keys if key in source}
+
+
 def _dag_payload(name: str, payload: dict) -> dict:
     """One progress event's wire payload."""
     common = {"run_id": payload.get("run_id"), **_present(payload, ("tool_call_id",))}
@@ -98,6 +108,10 @@ def _dag_payload(name: str, payload: dict) -> dict:
             "node": payload.get("node"),
             "status": payload.get("status"),
             **_present(payload, ("started_at", "ended_at", "reason", "selected_routes", "route_evidence")),
+            # Who runs the node now, and every agent that tried it. The runner
+            # sets these only once the node has been reassigned, so no frame of
+            # an ordinary run grows a key.
+            **_present_exact(payload, ("subagent", "instance", "instance_auto", "attempt_agents")),
         }
     if name == "dag_run_replanned":
         return {
@@ -126,6 +140,14 @@ def _dag_payload(name: str, payload: dict) -> dict:
             "node": entry.get("node"),
             "status": entry.get("status"),
             **_present(entry, ("output_file", "error", "reason", "selected_routes", "route_evidence")),
+            # The runner stamps the agent, handle and flag on every file; only a
+            # node it reassigned has more to say than its own start frame did,
+            # and only that one is allowed to grow the payload.
+            **(
+                _present_exact(entry, ("subagent", "instance", "instance_auto", "attempt_agents"))
+                if "attempt_agents" in entry
+                else {}
+            ),
         }
         for entry in manifest.get("files") or []
     ]
@@ -254,10 +276,18 @@ class RpcTurnRunner(AgentTurnRunner):
         # delivers a cron.delivered event to every session (the cron:<job_id>
         # conversation has no subscriber, so its hub deliverables no-op). Mirrors
         # the gateway's GatewayTurnRunner read-back path.
+        #
+        # Its usage is stashed as any turn's is. A wake runs on the session's own
+        # conversation, and its message.complete reports the lane's slot: left to
+        # the turn before (one that did not own the lane, so never cleared it),
+        # that turn's spend was reported again.
         if req.origin is Origin.CRON:
             text_sink: dict[str, str] = {}
+            cron_usage: dict[str, Any] = {}
             try:
-                outcome = await self._loop.run_turn(req, emit, drain, stream=False, text_sink=text_sink)
+                outcome = await self._loop.run_turn(
+                    req, emit, drain, stream=False, usage_sink=cron_usage, text_sink=text_sink
+                )
             finally:
                 # A turn that fails stores nothing and the submitter pops by
                 # conversation, so the previous run's text must not be left for
@@ -266,6 +296,7 @@ class RpcTurnRunner(AgentTurnRunner):
                     self._readback_texts.pop(req.conversation, None)
             if req.conversation is not None and (text := text_sink.get("text")) is not None:
                 self._readback_texts[req.conversation] = text
+            self._usages[cid] = dict(cron_usage)
             return outcome
         usage_sink: dict[str, Any] = {}
         if req.turn_id:

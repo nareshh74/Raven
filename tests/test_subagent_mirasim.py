@@ -85,9 +85,30 @@ async def test_verify_records_a_resumable_agent_with_mirasims_menus(tmp_path: Pa
         ("Mirasim", "glm-5.3-flash"),
         ("Own key", "profile:abc"),
     ]
-    assert [mode.id for mode in snapshot.available_modes] == ["low", "high", "max"]
+    # Effort is a thought_level option now, not a session mode: the adapter
+    # advertises no modes, and the rungs ride the option that names them.
+    assert snapshot.available_modes == ()
+    assert snapshot.effort_option == "effort"
+    assert [(choice.value, choice.name) for choice in snapshot.effort_choices] == [
+        ("low", "Low"),
+        ("high", "High"),
+        ("max", "Max"),
+    ]
     # The handshake asked the host for its menus and started no turn.
     assert host.frames("listClis") and host.frames("getCatalog") and not host.frames("prompt")
+
+
+@pytest.mark.slow
+async def test_a_row_on_a_model_without_rungs_records_no_effort_menu(tmp_path: Path, host: FakeHost) -> None:
+    """The row's effort menu is its own model's: glm-5.3-flash takes no rung,
+    so the row offers none rather than the default model's three, every one of
+    which its turns would drop."""
+    flash = await verify_agent(adapter_config(tmp_path, host).model_copy(update={"model": "glm-5.3-flash"}))
+    assert flash.status == "ready", flash.detail
+    assert (flash.effort_option, flash.effort_choices) == ("", ())
+
+    own = await verify_agent(adapter_config(tmp_path, host).model_copy(update={"model": "own:sonnet"}))
+    assert [choice.value for choice in own.effort_choices] == ["low", "high", "max"]
 
 
 @pytest.mark.slow
@@ -548,3 +569,15 @@ def test_the_socket_of_a_server_run_over_ssh_is_a_host_only_while_it_answers(
     (remote_root / "current" / "start.sh").unlink()
     (remote_root / "servers" / "0.0.587").rmdir()
     assert mp.presence(nowhere["env"], path=nowhere["path"]) == ("installed", str(remote_root))
+
+
+def test_which_rows_get_ravens_interpreter_is_declared_not_inferred_from_the_command() -> None:
+    """A command that happens to spell a placeholder does not make its row a bundled shim."""
+    from raven.agent.subagent.presets import BUNDLED_SHIM_PRESETS, _launchable
+
+    shaped = {"preset": "codex", "command": "{PYTHON} -P -m example"}
+    assert _launchable(shaped) == shaped
+
+    bundled = {"preset": next(iter(BUNDLED_SHIM_PRESETS)), "command": "{PYTHON} -P -m example"}
+    expanded = _launchable(bundled)["command"]
+    assert "{PYTHON}" not in expanded and expanded.endswith(" -P -m example")
