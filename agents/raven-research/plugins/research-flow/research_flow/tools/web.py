@@ -51,6 +51,7 @@ from typing import Any
 import httpx
 from loguru import logger
 
+from raven.agent.tools.web import _firecrawl_url
 from raven.contracts.tool import Tool
 from raven.security.network import validate_url_target
 from research_flow.support.evidence_round import EvidenceRound
@@ -1274,7 +1275,7 @@ class WebSearchTool(Tool):
             )
         if self.provider == "firecrawl":
             return await client.post(
-                "https://api.firecrawl.dev/v1/search",
+                _firecrawl_url("/v1/search"),
                 json={"query": query, "limit": n},
                 headers={
                     "Accept": "application/json",
@@ -2195,7 +2196,7 @@ class WebFetchTool(Tool):
             async def _send_fc() -> httpx.Response:
                 async with httpx.AsyncClient(timeout=30.0, proxy=self.proxy) as client:
                     return await client.post(
-                        "https://api.firecrawl.dev/v1/scrape",
+                        _firecrawl_url("/v1/scrape"),
                         json={"url": url, "formats": ["markdown"]},
                         headers=headers,
                     )
