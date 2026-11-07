@@ -11,7 +11,11 @@
       "reasoningEffort": "medium",
       "maxToolIterations": 40,
       "maxTokens": 16384,
-      "requestTimeoutSeconds": 600
+      "contextWindowTokens": 65536,
+      "requestTimeoutSeconds": 600,
+      "taskBoard": {
+        "enabled": false
+      }
     }
   },
   "memory": {

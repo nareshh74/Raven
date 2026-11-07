@@ -3,7 +3,7 @@
 // Source of truth: rpc-schema/openrpc.json (OpenRPC 1.2.6).
 // Drift check: `npm run gen:check` (CI runs this; a stale file fails the build).
 //
-// 250 methods, 138 component schemas.
+// 255 methods, 147 component schemas.
 
 /* eslint-disable */
 /**
@@ -67,7 +67,12 @@ export type TurnEvent =
   | CronMissedEvent
   | MediaEvent
   | SessionTitledEvent
-  | SessionNamingEndedEvent;
+  | SessionNamingEndedEvent
+  | TasksBoardUpdatedEvent;
+/**
+ * Where a Task Group stands. needs_you: the reply asks the user to answer, confirm or decide about it, an error only the user can resolve included, even while a run it started still works. running: a run it started is still working. idle: nothing is in flight and nothing is asked. completed: finished, or dropped by the user -- nothing further moves it.
+ */
+export type TaskGroupStatus = 'needs_you' | 'running' | 'idle' | 'completed';
 /**
  * Which delegation path made a task: a spawn call, or a run_subagent_dag run (a playbook run is one).
  */
@@ -170,6 +175,10 @@ export interface SessionInitInfo {
    * A turn is in flight on this session right now.
    */
   running?: boolean;
+  /**
+   * The reasoning effort this session's own model calls run at: its own pick (session.set_effort), else its mode's, else agents.defaults.reasoningEffort; null when the provider's own default stands.
+   */
+  reasoning_effort?: string | null;
   /**
    * True for an Imported Conversation, which nothing can change; absent on every other session.
    */
@@ -1110,6 +1119,10 @@ export interface ModelLabel {
    */
   output_modalities?: string[];
   /**
+   * The reasoning-effort words a provider's model overlay declares for this model; empty where none was stated.
+   */
+  reasoning_efforts?: string[];
+  /**
    * The bucket a model list files this model under, from what it writes (registry_data.kind_of): a model that reads images is still text. A model with no label entry is text.
    */
   kind: 'text' | 'image' | 'audio' | 'video' | 'embedding' | 'reranker';
@@ -2010,6 +2023,72 @@ export interface MediaEvent {
   };
 }
 /**
+ * A conversation's Task Board after a write -- the post-turn update or the reader's own action. Not replayed: a client that reconnects reads tasks.board.
+ */
+export interface TasksBoardUpdatedEvent {
+  type: 'tasks.board_updated';
+  payload: TasksBoardUpdatedPayload;
+}
+export interface TasksBoardUpdatedPayload {
+  session_key: string;
+  board: TaskBoard;
+  /**
+   * Each run that continued a placed run without a tool call of its own (a replan's successor, a later stint round), mapped to the placed run it descends from.
+   */
+  lineage: {
+    [k: string]: string;
+  };
+}
+/**
+ * One host conversation's Task Board: its Task Groups and any dispatch still waiting for a place.
+ */
+export interface TaskBoard {
+  version: number;
+  groups: TaskGroup[];
+  unassigned: PendingDispatch[];
+}
+/**
+ * One matter a conversation is pushing, spanning any number of turns, with its Progress Steps in time order. summary says where the matter stands; any turn may rewrite it.
+ */
+export interface TaskGroup {
+  id: string;
+  title: string;
+  summary: string;
+  status: TaskGroupStatus;
+  created_at: number;
+  updated_at: number;
+  steps: ProgressStep[];
+}
+/**
+ * One turn's advance on one Task Group: a title, and a summary of what moved and what is next or awaited -- on a step that left its group needs_you, opening with what the user is asked. questions: each question that step's reply asked the user about the matter, empty on every other step. turn_at is the timestamp the session log stores on the message that opened the turn.
+ */
+export interface ProgressStep {
+  id: string;
+  turn_at: string;
+  turn_id?: string | null;
+  title: string;
+  summary: string;
+  questions: string[];
+  tasks: TaskLinkRef[];
+}
+/**
+ * A Task a Progress Step started, in the address tasks.list rows use (spawn: node id, dag: run id), with the summary the dispatching call gave.
+ */
+export interface TaskLinkRef {
+  kind: TaskKind;
+  id: string;
+  summary: string;
+}
+/**
+ * A dispatch whose turn's board update never landed; the next update has to place it.
+ */
+export interface PendingDispatch {
+  handle: string;
+  summary: string;
+  turn_at: string;
+  turn_id?: string | null;
+}
+/**
  * One base as the list view needs it.
  *
  * ``embedding_model`` and ``dimensions`` are the base's own, recorded when it
@@ -2908,6 +2987,23 @@ export interface MachineRow {
    */
   agents_off_here: string[];
 }
+/**
+ * One Task Group on the Task Board page: where it came from, what it is, and what it needs. running_since_ms is the earliest start among its runs still running, on a card of any category; null when none runs or none that runs reports a start.
+ */
+export interface TaskBoardCard {
+  session_key: string;
+  session_title: string;
+  group_id: string;
+  title: string;
+  summary: string;
+  status: TaskGroupStatus;
+  created_at: number;
+  updated_at: number;
+  category: 'needs_you' | 'running' | 'idle' | 'completed';
+  running_since_ms?: number | null;
+  events: number;
+  sub_agents: number;
+}
 export interface SessionListParams {
   /**
    * Max sessions to return.
@@ -3141,6 +3237,7 @@ export interface TurnSendParams {
   media?: string[];
   target?: DirectTarget;
   busy?: 'inject';
+  move_on?: string;
 }
 export interface TurnSendResult {
   turn_id: string;
@@ -3314,6 +3411,10 @@ export interface ModelAddModelParams {
   capabilities?: string[];
   input_modalities?: string[];
   output_modalities?: string[];
+  /**
+   * The reasoning-effort words this model accepts, least first. Omit to leave a stored declaration alone; [] clears it.
+   */
+  reasoning_efforts?: string[];
   session_id?: string;
 }
 export interface ModelAddModelResult {
@@ -3852,6 +3953,36 @@ export interface SessionSetModeResult {
     name?: string;
     description?: string;
   }[];
+}
+export interface SessionSetEffortParams {
+  session_key: string;
+  /**
+   * One of the words in options. Omit it to report without changing.
+   */
+  effort?: string;
+  /**
+   * Drop the session's own pick and follow the default again. Wins over effort when both are given.
+   */
+  clear?: boolean;
+  /**
+   * The model to answer for when the caller has no session yet (a draft). Omit for a session's own model.
+   */
+  model?: string;
+}
+export interface SessionSetEffortResult {
+  session_key: string;
+  /**
+   * The session's own pick where the model declares it, else null: a stored pick the model does not offer reads as null, and the turn runs at default.
+   */
+  effort?: string | null;
+  /**
+   * What the session runs at with no pick of its own: its mode's effort where the catalogue sets one, else agents.defaults.reasoningEffort, else null for the provider's own default. Not narrowed by the model.
+   */
+  default?: string | null;
+  /**
+   * The words this model accepts, least first.
+   */
+  options?: string[];
 }
 export interface SessionSetKnowledgeParams {
   session_id: string;
@@ -6219,6 +6350,61 @@ export interface TasksListParams {
 export interface TasksListResult {
   tasks: TaskRow[];
 }
+export interface TasksBoardParams {
+  /**
+   * Whose board to read.
+   */
+  session_key: string;
+}
+export interface TasksBoardResult {
+  board: TaskBoard;
+  /**
+   * Each run that continued a placed run without a tool call of its own (a replan's successor, a later stint round), mapped to the placed run it descends from.
+   */
+  lineage: {
+    [k: string]: string;
+  };
+}
+export interface TasksBoardsParams {
+  /**
+   * Also return the completed cards. The counts are returned either way.
+   */
+  include_completed?: boolean;
+}
+export interface TasksBoardsResult {
+  cards: TaskBoardCard[];
+  completed_count: number;
+  needs_you_count: number;
+}
+export interface TasksSetGroupStatusParams {
+  session_key: string;
+  group_id: string;
+  status: 'completed' | 'idle';
+}
+export interface TasksSetGroupStatusResult {
+  board: TaskBoard;
+  /**
+   * Each run that continued a placed run without a tool call of its own (a replan's successor, a later stint round), mapped to the placed run it descends from.
+   */
+  lineage: {
+    [k: string]: string;
+  };
+}
+export interface TasksIgnoreQuestionParams {
+  session_key: string;
+  group_id: string;
+  step_id: string;
+  question: string;
+}
+export interface TasksIgnoreQuestionResult {
+  board: TaskBoard;
+  /**
+   * Each run that continued a placed run without a tool call of its own (a replan's successor, a later stint round), mapped to the placed run it descends from.
+   */
+  lineage: {
+    [k: string]: string;
+  };
+}
 export interface ImportScanParams {}
 export interface ImportScanResult {
   ready: boolean;
@@ -6712,6 +6898,7 @@ export interface RpcMethods {
   'machines.local_keys': { params: MachinesLocalKeysParams; result: MachinesLocalKeysResult };
   'session.set_harness': { params: SessionSetHarnessParams; result: SessionSetHarnessResult };
   'session.set_mode': { params: SessionSetModeParams; result: SessionSetModeResult };
+  'session.set_effort': { params: SessionSetEffortParams; result: SessionSetEffortResult };
   'session.set_knowledge': { params: SessionSetKnowledgeParams; result: SessionSetKnowledgeResult };
   'system.hello': { params: SystemHelloParams; result: SystemHelloResult };
   'system.ping': { params: SystemPingParams; result: SystemPingResult };
@@ -6864,6 +7051,10 @@ export interface RpcMethods {
   'subagent.cancel_session': { params: SubagentCancelSessionParams; result: SubagentCancelSessionResult };
   'subagent.cancel_instance': { params: SubagentCancelInstanceParams; result: SubagentCancelInstanceResult };
   'tasks.list': { params: TasksListParams; result: TasksListResult };
+  'tasks.board': { params: TasksBoardParams; result: TasksBoardResult };
+  'tasks.boards': { params: TasksBoardsParams; result: TasksBoardsResult };
+  'tasks.set_group_status': { params: TasksSetGroupStatusParams; result: TasksSetGroupStatusResult };
+  'tasks.ignore_question': { params: TasksIgnoreQuestionParams; result: TasksIgnoreQuestionResult };
   'import.scan': { params: ImportScanParams; result: ImportScanResult };
   'import.run': { params: ImportRunParams; result: ImportRunResult };
   'import.status': { params: ImportStatusParams; result: ImportStatusResult };
@@ -7077,6 +7268,7 @@ export const RPC_METHODS = [
   "session.pin",
   "session.resume",
   "session.save",
+  "session.set_effort",
   "session.set_harness",
   "session.set_knowledge",
   "session.set_mode",
@@ -7135,7 +7327,11 @@ export const RPC_METHODS = [
   "system.ping",
   "system.upgrade",
   "system.version",
+  "tasks.board",
+  "tasks.boards",
+  "tasks.ignore_question",
   "tasks.list",
+  "tasks.set_group_status",
   "terminal.resize",
   "tools.configure",
   "trajectory.block",

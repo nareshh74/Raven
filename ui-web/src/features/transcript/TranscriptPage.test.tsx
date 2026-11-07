@@ -1,5 +1,7 @@
 // @vitest-environment happy-dom
 import { act } from '@testing-library/react'
+// @ts-expect-error Vitest provides Node built-ins without adding Node types to the browser bundle.
+import { readFileSync } from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { setTranslator } from '../../i18n/t'
@@ -2413,15 +2415,47 @@ describe("the turn's delivered files", () => {
     /* A page opens in a browser tab and in the panel; a document the panel
        reads opens there; a binary is fetched. */
     expect(acts).toEqual([
-      ['en:gui.arts.browser', 'en:gui.arts.open {"f":"page.html"}'],
-      ['en:gui.arts.open {"f":"notes.md"}'],
+      ['en:gui.arts.browser', 'en:gui.arts.download', 'en:gui.arts.open {"f":"page.html"}'],
+      ['en:gui.arts.download', 'en:gui.arts.open {"f":"notes.md"}'],
       ['en:gui.arts.download'],
     ])
     const [page, , deck] = $$('.atile')
     expect(page!.querySelector('a.transcript-act')?.getAttribute('target')).toBe('_blank')
     expect(deck!.querySelector('a.transcript-act')?.getAttribute('download')).toBe('cv.pptx')
+    expect($$('.atile')[1]!.querySelector('a.transcript-act')?.getAttribute('href')).toBe('/files/download?token=notes.md')
     act(() => { ($$('.atile')[1]!.querySelector('button.transcript-act') as HTMLElement).click() })
     expect(opened).toEqual(['/w/notes.md'])
+  })
+
+  /* The token link is the only attachment the page can hand over. A manifest
+     written before the field -- or the offline canvas's -- carries none, and
+     an anchor with an empty href would save the page itself under the file's
+     name instead of the file. */
+  it('offers no download when the delivery carries no link', async () => {
+    vi.stubGlobal('fetch', () => Promise.resolve({ ok: true }))
+    act(() => {
+      mount.history([
+        { role: 'user', text: 'make them', timestamp: iso(Date.now() - 9000) },
+        { role: 'tool', name: 'deliver_files', text: 'ok', metadata: {
+          raven_delivery: {
+            files: [
+              { path: '/w/notes.md', name: 'notes.md', title: 'notes.md', size: 12000, media_type: 'text/markdown' },
+              { path: '/w/cv.pptx', name: 'cv.pptx', title: 'cv.pptx', size: 12000,
+                media_type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' },
+            ],
+            invalid: [],
+          },
+        } },
+        { role: 'assistant', text: 'done', timestamp: iso(Date.now()) },
+      ])
+    })
+    await act(async () => { await Promise.resolve() })
+    expect($$('.atile a[download]')).toHaveLength(0)
+    /* The document still opens in the panel; the binary has nothing to offer,
+       so it does not draw an empty control strip either. */
+    expect($$('.atile')[0]!.querySelectorAll('.transcript-act')).toHaveLength(1)
+    expect($$('.atile')[1]!.querySelectorAll('.transcript-act')).toHaveLength(0)
+    expect($$('.atile')[1]!.querySelector('.transcript-acts')).toBeNull()
   })
 
   it('shows a delivered deck by its first page, rendered by the gateway', async () => {
@@ -3391,20 +3425,54 @@ describe('transcript island, tool episodes', () => {
     })
   })
 
-  it('shows a failure on the row, on the summary chip, and opens the fold unasked', () => {
+  it('shows a failure on the row and the summary chip without opening the fold', () => {
     twoCalls(true)
     const sum = $('.wk > .wrow.sum') as HTMLElement
-    /* A failure is the one thing worth opening unasked. */
-    expect(($('.wkin') as HTMLElement).hidden).toBe(false)
+    /* A failed call is ordinary work: the word says so, but it does not pop
+       the fold the reader did not ask for. */
+    expect(($('.wkin') as HTMLElement).hidden).toBe(true)
     expect(sum.querySelector('.chip.bad')?.textContent).toBe('en:gui.n_failed {"n":1}')
+    act(() => { sum.click() })
     const bad = $$('.wkin .wrow')[1] as HTMLElement
     expect(bad.classList.contains('bad')).toBe(true)
+    expect(bad.querySelector('.chip.bad')?.textContent).toBe('en:gui.fail')
     expect(bad.querySelector('.err')?.textContent).toBe('error: nope')
     /* The design's alert glyph (Figma: Raven / Thinking), not the kind's own. */
     expect(bad.querySelector('svg.transcript-ic circle')).toBeTruthy()
     expect(bad.querySelector('svg.transcript-ic')?.outerHTML).not.toBe(
       ($$('.wkin .wrow')[0] as HTMLElement).querySelector('svg.transcript-ic')?.outerHTML,
     )
+  })
+
+  it('keeps a failed row out of the danger colour', () => {
+    /* The row keeps its `bad` class for the state and for tests; what it must
+       not keep is the danger ink those rules used to paint. The stylesheet is
+       the only place that can answer this, so read it. */
+    const css = readFileSync('src/styles/page.css', 'utf8')
+    expect(css).not.toMatch(/\.wrow\.bad[^{]*\{[^}]*--chat-danger/)
+    expect(css).not.toMatch(/\.wrow \.err[^{]*\{[^}]*--chat-danger/)
+    expect(css).not.toMatch(/\.chip\.bad[^{]*\{[^}]*(?:--clay|--chat-danger)/)
+
+    /* The same rule for the detail behind a delegation, a sub-agent's
+       delivered row and a tool call's exit code: a step that failed is read
+       as the word and its own error line, not as a red alarm. One extraction
+       per selector, so a new rule cannot reintroduce the colour unseen. */
+    const rule = (head: string): string => {
+      const at = css.indexOf(head)
+      expect(at, head).toBeGreaterThanOrEqual(0)
+      return css.slice(at, css.indexOf('}', at) + 1)
+    }
+    for (const sel of [
+      '.dlg .dgr .v.err {', '.dlg .dot.bad {', '.sdlv.bad .st {', '.sdlv.bad .st .dot {',
+      '.dtl .exit.bad {', '.sarow.task[data-st="error"] .dot {', '.sarow.task .st.fail {',
+      '.tkerr {', '.tkfail {', '.tkstop {',
+    ]) {
+      expect(rule(sel), sel).not.toMatch(/--(?:clay|chat-danger)/)
+    }
+    /* Not a blanket removal: the page-wide status dot and diff deletions are
+       not task outcomes, so their warning colour stays. */
+    expect(rule('.dot.err, .dot.bad {')).toContain('--clay')
+    expect(rule('.diff .del {')).toContain('--clay')
   })
 
   it('merges consecutive silent steps into one stretch under one summary', () => {

@@ -315,6 +315,42 @@ from a record held per agent and parent binding (`_SESSION_STATE`) for as long a
 instance can resume that session -- across the pool closing the idle agent and reloading
 the session in a new process, though not across a Raven restart.
 
+**Session Reasoning Effort** (`agent/session_effort.py`; `session.set_effort` over RPC, `/effort` in
+the TUI, the effort row of the WebUI's model picker):
+The reasoning effort one session picked for its own model calls, kept on the session's
+metadata beside `model` (`reasoning_effort`; null once cleared, since a metadata patch sets
+keys and never removes one) rather than on the loop's in-memory policy, so it outlives the
+gateway and a resumed conversation runs at what it was left at, and a fork carries it with
+the model (`FORK_CARRIES` in `session/manager.py`). `_run_agent_loop` is handed
+it by the turn entrance that holds the record, the way the model is, and ranks it: the
+configured `agents.defaults.reasoningEffort` underneath, a Session Mode's own
+`reasoningEffort` over that, this pick over both, a hook's rollback override on top. The
+ranking is `session_effort.in_force`, one rule with one home: the turn runs at it
+(`session_reasoning_effort` on the loop) and `session.info` / `session.set_effort` report
+it, and the turn sends the word in force on every call, None included, so a default cleared
+on a running gateway lands on its next turn -- the provider's own copy of the key, frozen at
+boot, is never consulted. The pick's words are the levels the conversation's model declares
+(`providers/effort_levels.py`: the route row's own `reasoning_effort_levels`, else its
+per-level flags, else the vendor row's `reasoning_effort_levels`, else the flags inherited
+from that row, else the serving provider's `ProviderSpec.reasoning_efforts`, else the flags'
+defaults, with a provider's `model_overlay.reasoningEfforts` over all of them; the serving
+provider is the config's route for the model, not the id's prefix, and a row filed under
+another provider than that section is skipped); `session.set_effort` offers and validates
+exactly those, a model that declares none has no row, and a stored pick the current model
+does not declare is dropped at the turn and in `session.info` (`session_effort.clamp`); the mode's
+word or the configured default then runs, since those two are not narrowed by the model.
+The install-wide `agents.defaults.reasoningEffort` keeps `REASONING_EFFORTS`
+(`config/schema.py`), shared with the console's checker and the agent's own `raven_config`
+door -- a key that is clearable on both (null is the provider's own default) and that the
+settings page draws, when unset, as a rung of its own rather than as `low`. Lands on the
+next turn, like a tier;
+reaches no sub-agent, unlike one -- a sub-agent is still told the configured default
+(`RAVEN_PARENT_REASONING_EFFORT`), and the TUI's `/effort` is refused inside a direct chat
+with an instance, since the pick is the main conversation's and an instance has none.
+_Avoid_: reading the pick off `SessionPolicy`. A mode switch replaces the whole policy and a
+restart empties it; the record is the pick's one home, and the policy carries only the
+mode's own effort.
+
 **Subagent** (`agent/subagent/`):
 A background agent task spawned by `SubagentManager`. Runs with its own tool set; its result
 re-enters the session as a `SUBAGENT`-origin `TurnRequest` via Spine submit. Bounded by
@@ -745,14 +781,69 @@ parsing so a playbook can leave it for the model to fill, and `validate_and_orde
 it before any node runs. It replaces the first-line-of-the-template guess a row used to
 make.
 
-**Task** (`tasks.list`, `raven/rpc/methods/tasks.py`):
+**Task** (`tasks.list`, `raven/rpc/methods/tasks.py`; rows built by `raven/agent/subagent/task_rows.py`):
 one unit of delegated work a conversation started, as the wire lists it: a `spawn` call, or
 a `run_subagent_dag` run (a playbook run is one), each as a run-level row carrying its nodes.
 Built from the run dir, the session node registry (`subagents/nodes.json`) and the Instance
 Registry, without the live graph tool; the row's status is derived from its nodes'
-(`docs/specs/2026-09-18-desk-tasks-list-design.md`).
+(`docs/specs/2026-09-18-desk-tasks-list-design.md`). The Task Board's recall reads a linked
+Task's status off the same row.
 _Avoid_: "task" for a spine `TurnRequest`, an asyncio task, or the `task` text handed to a
 sub-agent -- those are a Turn, a coroutine, and a prompt.
+
+**Task Board** (`raven/agent/task_board/`, `<session_dir>/task_board.json`):
+one host session's set of Task Groups, kept by the host model in one extra call after each
+completed turn that answered or dispatched work, and read back through the `task_board` tool. A turn
+known to be about a group -- one a delegated result opened, one whose message a Move on or an
+Answer named the group for -- writes only to that group and to wherever it places the work it
+started. Only the Raven host keeps one; a subagent or product agent never does
+(`docs/specs/2026-10-29-task-board-design.md`).
+_Avoid_: "task list" (that is `tasks.list`), "todo" (Raven-Code's Checklist).
+
+**Task Group**:
+one matter a conversation is pushing, spanning any number of turns -- a bug fix, a release
+note. Carries a title (at most 20 words, a CJK character counting as one), a summary of
+where the matter stands (asked for at most 50, refused only past 100; any turn may rewrite
+it), a status and its Progress Steps. The status is one of four the model sets after each
+turn: `needs_you` (the reply asks the user to answer, confirm or decide about it -- an error
+only the user can resolve included -- even while a run it started still works),
+`running` (a run it started is still working), `idle` (nothing in flight, nothing asked) and
+`completed` (finished or dropped; nothing further moves it). Chinese surfaces -- the zh
+prompt pack, the conversation -- call it 任务.
+_Avoid_: "task" for this in English -- a Task is one delegated unit, and hangs under a step;
+where a Task Group is 任务, a delegated unit is a 子智能体 or a DAG run.
+
+**Board category** (`raven/agent/task_board/overview.py` `category_of`, `tasks.boards`;
+`categoryOf` in `ui-web/src/features/tasks/boards.ts`):
+the type a Task Group is shown as, everywhere one is shown -- the Task Board page's columns
+and list, the rail badge, the sidebar's tasks tab -- one of *Needs you*, *Running*, *Idle* and
+*Completed*, after the status of the same name. `needs_you` and `completed` stand as written.
+Between the other two the live runs decide, not the model: a group is *Running* while a Task
+it links is one the sidebar's `tasks.list` reads as `running` -- so never a run this gateway
+no longer executes -- and *Idle* otherwise. Chinese surfaces: 需要你回答 / 运行中 / 闲置 / 已完成.
+_Avoid_: "Waiting on you" and "Stuck" -- *Needs you* is one type for a question and an error
+alike; "Archived" for a completed Task Group -- an archived conversation is the rail's, and
+its groups are left off the page altogether.
+
+**Progress Step**:
+one turn's advance on one Task Group: a title the page shows (at most 20 words) and a
+summary of any length that recall reads back, keyed by the timestamp of the message that
+opened the turn, with the Tasks that turn dispatched for it. A turn that
+advanced three groups writes three steps. The step that leaves its group `needs_you` opens its
+summary with what the user is asked and lists each question about the matter; while the group
+waits, the page shows that summary under the step and frames each question in a box of its own
+on the card, with an Ignore that sets that one question aside (`tasks.ignore_question`; the
+last one set aside leaves the group idle; the host is told at its next turn, as declined, so it
+does not ask again), one Answer (a reply drafted in the composer), and Move on; each names the
+group the next message is about, in that message's turn; recall reads the
+ones still open back to the host. A turn that updates a waiting group without asking anything
+new carries those questions onto its step, so the latest step normally holds the whole list;
+when that pass gets no answer -- a provider error, three refusals, or a reader's change
+meanwhile -- the update stands as written and the earlier step keeps them. Because the page lists them, the host's reply rules stop asking open questions again on every reply for a reader of
+the page with the board on (`render.board_on_page`); other channels and the terminal still do, and a turn a run's result opens is read on the surface the turn that dispatched it declared. Chinese surfaces call it 事件. The page marks it running while a Task it started runs, failed when one failed, and
+done otherwise; clicking it scrolls the transcript to that turn's reply.
+_Avoid_: "subtask" (it records progress, it is not a unit of work), "step" alone (the node
+record's steps are another thing).
 
 **Instance Title** / **Run Title** (`InstanceRow.title` / `InstanceRow.runTitle`):
 what one instance was asked, and what the graph it belongs to was asked. Computed by
@@ -2014,8 +2105,10 @@ verdict wins.
 A plugin's session-retirement contribution (the `session_observers` kind): the session
 store calls `on_session_deleted` synchronously after it has acted on a delete, from
 whichever host surface asked. The store notifies and never waits -- an observer that
-raises is logged and skipped; no veto, no repair. For a plugin keeping per-session state
-outside the session store (an allocation ledger, a provisioned directory).
+raises is logged and skipped; no veto, no repair. One that declares `session_dir` is also
+handed the session's metadata directory as the store found it before the transcript went.
+For a plugin keeping per-session state outside the session store (an allocation ledger, a
+provisioned directory).
 
 **Visual Domain Selector** (`plugins-dist/design-engine/raven_design/selector.py`, hook seat `raven_design/plugin/hook.py`):
 The design engine's per-turn domain router, seated on the `hooks` kind
@@ -2219,7 +2312,7 @@ reaches `config.admission` for the door vocabulary and builds a loop by hand for
 legal, because it is a harness over recorded runs, not an entrance. One package holds two
 seats: in `agent/`, `agent/loop` is the L2 harness shell every entrance runs, and its
 siblings -- `tools`, `subagent`, `context`, `hook`, `personalizer`, `workdir`,
-`harness`, `window` -- are L3 cargo the loop consumes; the "cargo does not import the loop shell"
+`harness`, `window`, `task_board` -- are L3 cargo the loop consumes; the "cargo does not import the loop shell"
 import-linter contract keeps the two seats apart in the shared directory, which is why
 the package is not split physically (ruled 2026-08-30). The one exception the target
 tree always named: the ACP client family -- the client, the `acp_agent` backend that
