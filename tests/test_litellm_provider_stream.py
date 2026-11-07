@@ -1037,3 +1037,21 @@ async def test_a_streamed_refusal_is_resent_once_unstreamed_and_read_as_one(
         assert seen == [("gpt-4o", True), ("gpt-4o", False)]
         assert outcome.status == "error"
         assert outcome.error == REFUSAL_FAILURE + REFUSAL_EXPLANATION.format(text=_REFUSAL)
+
+
+@pytest.mark.parametrize("order", ["real_then_empty", "empty_then_real"])
+def test_litellm_repetition_guard_tolerates_an_empty_choices_chunk(order: str) -> None:
+    """A usage-only or prompt-filter chunk (``choices == []``) beside a content chunk
+    used to raise IndexError in LiteLLM 1.85.0's repetition guard, which surfaced as
+    a MidStreamFallbackError on every GitHub Copilot stream."""
+    from types import SimpleNamespace
+
+    from litellm import ModelResponseStream
+    from litellm.litellm_core_utils.streaming_handler import CustomStreamWrapper
+    from litellm.types.utils import Delta, StreamingChoices
+
+    empty = ModelResponseStream(id="a", choices=[], model="m")
+    real = ModelResponseStream(id="a", choices=[StreamingChoices(index=0, delta=Delta(content="hello"))], model="m")
+    chunks = [real, empty] if order == "real_then_empty" else [empty, real]
+
+    CustomStreamWrapper.raise_on_model_repetition(SimpleNamespace(chunks=chunks, _repeated_messages_count=1))

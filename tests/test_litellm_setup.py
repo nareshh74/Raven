@@ -143,8 +143,23 @@ def test_import_litellm_keeps_non_terminal_handlers() -> None:
 # price are all read from.
 
 
-def test_import_litellm_registers_the_deepseek_flash_row() -> None:
+def _without_catalogue_rows(monkeypatch, litellm) -> None:
+    """Model a catalogue that does not know the ids, as the wheel raven first needed them for.
+
+    A newer LiteLLM (1.106.6 onward) files its own deepseek-flash row, and
+    raven leaves such a row alone, so the registration is only observable
+    against a table that lacks it.
+    """
+    from raven.providers import litellm_setup
+
+    for model_id in litellm_setup.RAVEN_MODEL_ROWS:
+        monkeypatch.delitem(litellm.model_cost, model_id, raising=False)
+    litellm_setup._register_raven_model_rows(litellm)
+
+
+def test_import_litellm_registers_the_deepseek_flash_row(monkeypatch) -> None:
     litellm = import_litellm()
+    _without_catalogue_rows(monkeypatch, litellm)
 
     row = litellm.model_cost["deepseek/deepseek-flash"]
     assert row["max_input_tokens"] == 1_048_576
@@ -155,10 +170,10 @@ def test_import_litellm_registers_the_deepseek_flash_row() -> None:
     assert row["output_cost_per_token"] == 1.20 / 1_000_000
 
 
-def test_the_registered_row_reaches_the_window_and_ceiling_resolvers() -> None:
+def test_the_registered_row_reaches_the_window_and_ceiling_resolvers(monkeypatch) -> None:
     from raven.providers import rates
 
-    import_litellm()
+    _without_catalogue_rows(monkeypatch, import_litellm())
 
     assert rates.resolve_context_window("deepseek/deepseek-flash") == 1_048_576
     assert rates.declared_max_output_tokens("deepseek/deepseek-flash") == 384_000
@@ -271,7 +286,9 @@ def test_import_litellm_frees_both_tokenizer_copies() -> None:
 
     assert litellm.utils.json_data is None
     assert isinstance(litellm.utils.claude_json_str, str)
-    assert "_mergeable_ranks" not in vars(tiktoken.get_encoding("cl100k_base"))
+    registry = sys.modules["tiktoken.registry"]
+    if "cl100k_base" in registry.ENCODINGS:
+        assert "_mergeable_ranks" not in vars(tiktoken.get_encoding("cl100k_base"))
     # Where tiktoken keeps the ranks, read off an encoding outside the registry: a
     # release that moved them would leave the line above passing with nothing freed.
     unregistered = tiktoken.Encoding(name="unregistered", pat_str=r"\S+", mergeable_ranks={b"a": 0}, special_tokens={})
@@ -280,10 +297,10 @@ def test_import_litellm_frees_both_tokenizer_copies() -> None:
 
 @pytest.mark.slow
 def test_litellm_s_own_import_registers_the_encoding_whose_ranks_it_frees(tmp_path) -> None:
-    """The ranks are freed only if cl100k is registered by the time the import
-    returns, and litellm's import does that today only through its token counter.
-    In this process an earlier test may have registered it first, so the import is
-    checked alone, in a fresh interpreter."""
+    """Whether litellm's import registers cl100k depends on its release (1.85.0
+    loads it eagerly, 1.106.6 lazily); when it does, the ranks must be freed by
+    the time the import returns. In this process an earlier test may have
+    registered it first, so the import is checked alone, in a fresh interpreter."""
     import subprocess
 
     probe = (
@@ -298,7 +315,6 @@ def test_litellm_s_own_import_registers_the_encoding_whose_ranks_it_frees(tmp_pa
         [sys.executable, "-P", "-c", probe], cwd=tmp_path, capture_output=True, text=True, timeout=120
     )
 
-    assert "registered by the import: True" in done.stdout, done.stdout + done.stderr
     assert "ranks left: False" in done.stdout, done.stdout + done.stderr
 
 
