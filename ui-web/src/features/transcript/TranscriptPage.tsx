@@ -569,6 +569,7 @@ function PlainCallRow({ lane, c }: { lane: Lane; c: CallData }): ReactElement {
           {c.srv ? <span className="srv">{`[${c.srv}] `}</span> : null}
           {c.done ? store.verbOf(store.actName(c.name, c.args)) : store.verbIngOf(store.actName(c.name, c.args))}
         </span>
+        {c.done && !c.ok ? <span className="chip bad">{t('gui.fail')}</span> : null}
         {c.done && c.hunk && (c.hunk.add || c.hunk.del) ? (
           <span className="diffn"><span className="a">+{c.hunk.add}</span> <span className="d">-{c.hunk.del}</span></span>
         ) : null}
@@ -693,6 +694,7 @@ const DelegRow = memo(function DelegRow({ lane, c }: { lane: Lane; c: CallData }
         <span className="ar">{head
           ? `${head.instance ? head.instance + '@' : ''}${head.agent}: ${head.task}`
           : c.rowLabel || ''}</span>
+        {c.done && !c.ok ? <span className="chip bad">{t('gui.fail')}</span> : null}
         <Chev />
       </div>
       <div className="dtl dlg" hidden={!c.open}>
@@ -887,6 +889,7 @@ const DagCard = memo(function DagCard({ lane, c }: { lane: Lane; c: CallData }):
           {c.done ? store.verbOf(store.actName(c.name, c.args)) : store.verbIngOf(store.actName(c.name, c.args))}
         </span>
         <span className="ar">{rowLabel}</span>
+        {c.done && !c.ok ? <span className="chip bad">{t('gui.fail')}</span> : null}
         <Chev />
       </div>
       <div className="dtl dlg dagc" hidden={!c.open}>
@@ -1199,7 +1202,7 @@ const AnswerView = memo(function AnswerView({ lane, seg, showFoot = true }: {
     return list
   }
   return (
-    <div className="answer in" ref={ctxRef(items)}>
+    <div className="answer in" data-answer={seg.id} ref={ctxRef(items)}>
       <div className="prose" dangerouslySetInnerHTML={{ __html: html }} />
       {showFoot ? <AnswerFoot lane={lane} seg={seg} /> : null}
     </div>
@@ -1390,7 +1393,7 @@ const DeliveredView = memo(function DeliveredView({ lane, seg }: { lane: Lane; s
   const { cls, key } = deliveredVerdict(seg)
   const name = seg.isDag ? t('gui.deleg.dag_title') : seg.label
   return (
-    <div className={'sdlv' + cls + (seg.shown ? ' open' : '')}>
+    <div className={'sdlv' + cls + (seg.shown ? ' open' : '')} data-delivered={seg.id}>
       <div className="sdhd">
         <Ico d={SDLV_ICO} cls="ic" />
         {/* The whole name, in the tooltip: a long task sentence must not push
@@ -1458,9 +1461,9 @@ const askIfGone = (url: string): Promise<boolean> =>
     .catch(() => false)
 
 /* What a card's buttons offer, by kind (Figma: Raven / AssistantMessage, the
-   output-file variants). A page is opened in a browser tab as well as in the
-   panel; a document the panel can read is opened there; a binary is fetched.
-   The card itself opens in the panel whichever it is. */
+   output-file variants). Every file can be fetched as an attachment; a page is
+   opened in a browser tab as well, and a document the panel can read is opened
+   there. The card itself opens in the panel whichever it is. */
 const BINARY_KINDS = new Set(['office', 'pdf', 'bin'])
 
 const DeliveryTile = memo(function DeliveryTile({ row }: { row: DeliveryRow }): ReactElement {
@@ -1526,7 +1529,10 @@ const DeliveryTile = memo(function DeliveryTile({ row }: { row: DeliveryRow }): 
       <button className="hit" disabled={!ready}
         aria-label={t('gui.arts.open', { f: row.name })}
         onClick={open} />
-      {ready ? (
+      {/* A binary with no token link has nothing left to offer, so the row's
+          controls are not drawn empty. Everything else keeps one: a page opens
+          in a browser tab, a document the panel reads opens there. */}
+      {ready && (url || !BINARY_KINDS.has(kind)) ? (
         <span className="transcript-acts">
           {kind === 'html' ? (
             <a className="transcript-act" href={fileURL(row.path)} target="_blank" rel="noopener"
@@ -1534,12 +1540,17 @@ const DeliveryTile = memo(function DeliveryTile({ row }: { row: DeliveryRow }): 
               <Icon icon={InternetIcon} size={16} />
             </a>
           ) : null}
-          {BINARY_KINDS.has(kind) ? (
+          {/* The token link is the only attachment the page can hand over. A
+              row without one -- a manifest written before the field, or the
+              offline canvas's -- offers no control rather than an anchor to
+              the page itself saved under the file's name. */}
+          {url ? (
             <a className="transcript-act" href={url} download={row.name}
               data-tip={t('gui.arts.download')} aria-label={t('gui.arts.download')}>
               <Icon icon={Download04Icon} size={16} />
             </a>
-          ) : (
+          ) : null}
+          {BINARY_KINDS.has(kind) ? null : (
             <button className="transcript-act" data-tip={t('gui.arts.open', { f: row.name })}
               aria-label={t('gui.arts.open', { f: row.name })} onClick={open}>
               <Icon icon={ArrowUpRight01Icon} size={16} />

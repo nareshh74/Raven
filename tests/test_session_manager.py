@@ -808,6 +808,30 @@ def test_a_raising_observer_is_skipped_and_the_rest_still_hear(tmp_path: Path):
     assert probe.log == [("probe", "tui:obs05", True)]
 
 
+def test_an_observer_that_asks_where_the_session_lived_hears_it_from_before_the_unlink(tmp_path: Path):
+    """Once the transcript is gone the store cannot find a session another process filed
+    under its project's slug, so the directory is resolved before the unlink and handed to
+    an observer that declares ``session_dir``; one that does not is called as before."""
+    project = SessionManager(tmp_path, project_slug="proj")
+    _saved(project, "tui:obs10")
+    lived = project.session_dir("tui:obs10")
+    gateway = SessionManager(tmp_path)
+    heard: list[tuple[str, bool, Path]] = []
+
+    class _Asks:
+        def on_session_deleted(self, session_key: str, removed: bool, *, session_dir: Path) -> None:
+            heard.append((session_key, removed, session_dir))
+
+    old_style = _DeleteProbe()
+    gateway.set_delete_observers((_Asks(), old_style))
+
+    assert gateway.delete("tui:obs10") is True
+
+    assert heard == [("tui:obs10", True, lived)]
+    assert gateway.session_dir("tui:obs10") != lived, "asked now, the store has lost it"
+    assert old_style.log == [("probe", "tui:obs10", True)]
+
+
 def test_set_delete_observers_replaces_the_whole_tuple(tmp_path: Path):
     """The setter is whole-tuple replacement, idempotent: re-attaching the same
     tuple never doubles a notification, and attaching () detaches."""
@@ -1429,6 +1453,47 @@ def test_fork_of_an_unswitched_parent_carries_no_model(tmp_path: Path):
 
     assert "model" not in child.metadata
     assert "provider" not in child.metadata
+
+
+def test_fork_inherits_the_reasoning_effort_the_parent_picked(tmp_path: Path):
+    """The pick rides the record beside the model, and a fork continues the
+    conversation it was picked for -- so it continues at it, restart or not."""
+    from raven.agent import session_effort
+
+    mgr = SessionManager(tmp_path)
+    src = _seed(mgr, "cli:src10", ("user", "a"))
+    src.metadata["model"] = "anthropic/claude-opus-4-8"
+    src.metadata[session_effort.METADATA_KEY] = "high"
+    mgr.save(src)
+
+    child = mgr.fork("cli:src10")
+
+    reloaded = SessionManager(tmp_path).get_or_create(child.key)
+    assert session_effort.of(reloaded.metadata) == "high"
+    assert reloaded.metadata["model"] == "anthropic/claude-opus-4-8"
+
+
+def test_fork_of_a_parent_following_the_default_carries_no_effort(tmp_path: Path):
+    """A cleared pick is null on the record, not absent -- a metadata patch sets
+    keys and never removes one -- and the fork starts without the key either way."""
+    from raven.agent import session_effort
+
+    mgr = SessionManager(tmp_path)
+    src = _seed(mgr, "cli:src11", ("user", "a"))
+    src.metadata[session_effort.METADATA_KEY] = None
+    mgr.save(src)
+
+    child = mgr.fork("cli:src11")
+
+    assert session_effort.METADATA_KEY not in child.metadata
+
+
+def test_the_fork_carries_the_key_the_effort_pick_is_kept_under():
+    """The session layer spells the key rather than importing the agent's;
+    this is what keeps the two spellings one."""
+    from raven.agent import session_effort
+
+    assert session_effort.METADATA_KEY in manager_mod.FORK_CARRIES
 
 
 def test_fork_resets_pending_clarification(tmp_path: Path):

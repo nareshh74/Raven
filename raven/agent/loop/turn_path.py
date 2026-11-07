@@ -119,6 +119,7 @@ from raven.agent.loop.recovery import (
     reply_kind,
     resend_budget,
 )
+from raven.agent.session_effort import of as session_effort_of
 from raven.agent.tools.registry import call_failed
 from raven.agent.tools.removals import RemovalWatch
 from raven.agent.window import shrink
@@ -827,8 +828,10 @@ class TurnPathMixin:
         # the turn's last word.
         synth_messages = messages + [{"role": "user", "content": prompt}]
         # The wrap-up is a model call of the same turn, so it pays the turn's
-        # effort; absent, the provider's configured default stands.
-        effort_kwargs: dict[str, Any] = {} if reasoning_effort is None else {"reasoning_effort": reasoning_effort}
+        # effort, sent the way the turn's other calls send it: None included,
+        # which is the provider's own default rather than the copy it took at
+        # boot (``gen_overrides`` in ``_run_agent_loop`` says why).
+        effort_kwargs: dict[str, Any] = {"reasoning_effort": reasoning_effort}
         # The wrap-up is asked for at the cliff edge, where the transcript is
         # longest, so it is sized to the room beside it like any other call.
         if reply_room := self._reply_room(synth_messages, None, model):
@@ -995,6 +998,8 @@ class TurnPathMixin:
         window_reading: dict[str, int] | None = None,
         silence_taught: bool = False,
         turn_start_idx: int = 0,
+        session_effort: str | None = None,
+        surface: str | None = None,
     ) -> tuple[str | None, list[str], list[dict], LoopOutcome]:
         """Run the agent iteration loop.
 
@@ -1019,6 +1024,10 @@ class TurnPathMixin:
         ``session_history`` is the filed record of the session this turn
         persists into -- still ending with the previous turn -- stamped once
         onto the iteration hook context. The caller owns which record that is.
+
+        ``surface`` is the front end the turn's request declared; the note after
+        a dispatch receipt reads it, since the terminal and the page share a
+        channel and only the page draws the board.
 
         ``turn_started_at`` is when the caller's turn began, on the clock
         :func:`monotonic` reads. A caller that may run this loop more than once
@@ -1060,6 +1069,11 @@ class TurnPathMixin:
         newest window a call of this loop measured. It outlives the loop the way
         ``spend`` does: a turn that fails or is stopped files it on its marker,
         which can be the only row the turn adds.
+
+        ``session_effort`` is the reasoning effort the session picked for its
+        own model calls (``raven.agent.session_effort``), read off its record
+        by the caller the way the model is. It outranks a mode's effort and
+        the configured default; a hook's rollback override still outranks it.
         """
         spend = spend if spend is not None else TurnSpend(session_key)
         messages = initial_messages
@@ -1067,6 +1081,9 @@ class TurnPathMixin:
         iteration = 0
         final_content = None
         tools_used: list[str] = []
+        last_tool_defs: list[dict] | None = None
+        last_model: str | None = None
+        last_effort: str | None = None
         effective_model = model or self.model
 
         # Track whether the turn was a normal exit or a max-iter interruption.
@@ -1200,6 +1217,14 @@ class TurnPathMixin:
         # Read once, here: a mode switched mid-turn lands on the next turn.
         policy = self.session_policy(session_key or "")
         iteration_cap = policy.max_iterations or self.max_iterations
+        # The effort this turn's own calls run at, short of a hook's rollback
+        # override: the session's own pick over its mode's word over the
+        # configured default as the file has it now -- ``session_effort.in_force``,
+        # the one rule ``session.info`` reports from too. The clamp is against
+        # ``model``, the id this loop will actually call: a router can hand the
+        # turn a model other than the session's binding, and that is the model
+        # whose declaration bounds the word.
+        turn_effort = self.session_reasoning_effort(session_key, session_effort, model)
         # The other bound on this turn, and the only one a product supplies rather
         # than the loop: whatever a hook left under ``TURN_BUDGETS_KEY``. Read here
         # for the same reason the cap is, and defaulting to unbounded, so an agent
@@ -1525,22 +1550,26 @@ class TurnPathMixin:
 
             # TokenWise before-hook: strategies may rewrite messages, tools,
             # or model (e.g. CacheOptimizer marks cache_control blocks).
-            # The session's pinned effort first, a hook's rollback override on
-            # top: a mode that asks for more thinking sets the turn's default,
-            # and a gate re-sampling one call may still move that one call.
+            # The session's effort first, a hook's rollback override on top: a
+            # mode that asks for more thinking, or the session's own pick, sets
+            # the turn's default, and a gate re-sampling one call may still
+            # move that one call.
             gen_overrides = {
-                # The configured default underneath, the session's pin over it,
-                # a hook's rollback override on top. The default is here rather
-                # than left to the provider because the provider's copy is
-                # frozen at construction (see ``default_reasoning_effort``).
-                **({"reasoning_effort": self.default_reasoning_effort} if self.default_reasoning_effort else {}),
-                **({"reasoning_effort": policy.reasoning_effort} if policy.reasoning_effort else {}),
+                # The effort in force (``turn_effort``), a hook's rollback
+                # override on top. Always sent, None included: the provider's
+                # own copy of the key is frozen at construction (see
+                # ``default_reasoning_effort``), so a key left out of the call
+                # let a default cleared on a running gateway keep running at
+                # the word the gateway booted with. An explicit None is the
+                # provider's own default, nothing on the wire.
+                "reasoning_effort": turn_effort,
                 **(pending_gen_overrides or {}),
             }
             # Kept for an unchanged resend: it asks again with whatever rode this call.
             call_overrides = pending_gen_overrides
             pending_gen_overrides = None
             call_reasoning_effort = gen_overrides.get("reasoning_effort")
+            last_tool_defs, last_model, last_effort = tool_defs, active_model, call_reasoning_effort
             call_messages, call_tools, call_model = await first_call.stage(
                 "the before_llm_call strategies",
                 self.strategies.before_llm_call(
@@ -1951,7 +1980,7 @@ class TurnPathMixin:
                                 tool_call.arguments, str(result), agent_output=getattr(result, "agent_output", False)
                             ),
                             watch_request,
-                            reasoning_effort=policy.reasoning_effort,
+                            reasoning_effort=turn_effort,
                         )
                         # A call that bound a Worker Table (load_playbook) moved the
                         # dispatch enums under an identity assembled before it.
@@ -1969,7 +1998,10 @@ class TurnPathMixin:
                         called = self.tools.get(tool_call.name)
                         reached = called.metadata_owner(tool_call.arguments or {}) if called is not None else None
                         if reached is not None and reached.name in render.DISPATCH_TOOLS:
-                            watch_note += render.reply_rules_note()
+                            channel = (session_key or "").partition(":")[0]
+                            watch_note += render.reply_rules_note(
+                                board_shown=render.board_on_page(self._task_board_config.enabled, channel, surface)
+                            )
                     # The registry already unwrapped any ToolResult: `result` is
                     # the model-facing text, with the optional display string
                     # riding along on it (ToolOutput). The model always gets the
@@ -2744,7 +2776,7 @@ class TurnPathMixin:
                 list(fallbacks_left),
                 on_token_delta=wrap_up_gate or on_token_delta,
                 on_reasoning_delta=on_reasoning_delta,
-                reasoning_effort=policy.reasoning_effort,
+                reasoning_effort=turn_effort,
                 prompt=_MAX_ITER_SYNTHESIS_PROMPT if stalled_tool is None else _STALLED_SYNTHESIS_PROMPT,
                 fallback=(
                     _STALLED_STATIC_FALLBACK.format(tool=stalled_tool)
@@ -2845,6 +2877,9 @@ class TurnPathMixin:
             no_output=no_output,
             silent=silent,
             shown="".join(step_shown) if silent else "",
+            last_tools=last_tool_defs,
+            last_model=last_model,
+            last_effort=last_effort,
         )
         checkpoint = self._turn_checkpoint()
         if checkpoint is not None:
@@ -3018,6 +3053,9 @@ class TurnPathMixin:
             session.clear()
             self.sessions.save(session)
             self.sessions.invalidate(session.key)
+            from raven.agent.task_board.service import reset_for
+
+            await reset_for(self.task_board, session.key, self.sessions.session_dir(session.key))
             return ("New session started.", [])
         if cmd == "/help":
             lines = [
@@ -3132,7 +3170,9 @@ class TurnPathMixin:
                     # generate_question failed: skip silently and proceed
         # ── End personalization flow ─────────────────────────────────────────
 
-        self._set_tool_context(channel, chat_id, metadata.get("message_id"), session_key=key)
+        self._set_tool_context(
+            channel, chat_id, metadata.get("message_id"), session_key=key, surface=req.source.surface
+        )
         if message_tool := self.tools.get("message"):
             if isinstance(message_tool, MessageTool):
                 message_tool.start_turn()
@@ -3148,7 +3188,7 @@ class TurnPathMixin:
         # least context made the most expensive call. All that remains per turn is
         # telling the tool what the turn is about, so its listing can be ranked.
         if self._playbooks is not None:
-            self._playbooks.set_context(channel=channel, chat_id=chat_id, session_key=key)
+            self._playbooks.set_context(channel=channel, chat_id=chat_id, session_key=key, surface=req.source.surface)
             if (pb_tool := self.tools.get("load_playbook")) is not None and hasattr(pb_tool, "set_turn_message"):
                 pb_tool.set_turn_message(content)
 
@@ -3349,6 +3389,10 @@ class TurnPathMixin:
                 window_reading=reading,
                 silence_taught=teaches_silence(content),
                 turn_start_idx=turn_start_idx,
+                # Read here, beside the model, because this is where the
+                # session is: the loop below is handed a key, not a record.
+                session_effort=session_effort_of(session.metadata),
+                surface=req.source.surface,
             )
 
         # Taken BEFORE the first attempt, because the loop appends to the list it is
@@ -3406,6 +3450,7 @@ class TurnPathMixin:
             pending.update(rerun=bool(retries_left) and bool(reasons) and not spent, reasons=reasons)
             return pending["rerun"]
 
+        turn_window: list[dict] = []
         try:
             # The tier this turn dispatches sub-agents at, frozen here for the
             # same reason the iteration cap is read once: a switch arriving mid-turn
@@ -3414,7 +3459,7 @@ class TurnPathMixin:
             # file the user attached is handing it over, one that names any other
             # .pptx is not, and only the turn knows which is which.
             with turn_tier(self.session_tier(key)), turn_attachments(req.media), spend.collecting():
-                final_content, _, _, outcome = await _attempt(initial_messages, attempt_no)
+                final_content, _, turn_window, outcome = await _attempt(initial_messages, attempt_no)
                 # The conditional rerun. A dead turn has no answer to damage -- "empty
                 # implies wrong" is a scoring rule, so the count of right answers among
                 # dead turns starts at zero and a second attempt can only raise it. It
@@ -3440,7 +3485,7 @@ class TurnPathMixin:
                         # attempt this is: the loop serves every agent, and the
                         # budget allows more reruns than the one.
                         await on_progress("That attempt produced no answer; running the turn again.")
-                    final_content, _, _, outcome = await _attempt(
+                    final_content, _, turn_window, outcome = await _attempt(
                         _seed_for_the_rerun(live["log"].messages()), attempt_no
                     )
                 # Session-level because this turn may persist no assistant row at
@@ -3511,6 +3556,7 @@ class TurnPathMixin:
                 status="cancelled",
                 context_used=reading.get("context_used"),
             )
+            self._park_task_board(key, live["log"].added(), turn_received_at, req.turn_id)
             raise
         except AnswerlessTurnError as exc:
             # The attempt's record, which follows every list a window pass rebound
@@ -3527,6 +3573,7 @@ class TurnPathMixin:
                 full_detail=attach_full_detail(exc),
                 context_used=reading.get("context_used"),
             )
+            self._park_task_board(key, live["log"].added(), turn_received_at, req.turn_id)
             raise
         except Exception as exc:
             self._save_broken_turn(
@@ -3543,6 +3590,7 @@ class TurnPathMixin:
                 full_detail=attach_full_detail(exc),
                 context_used=reading.get("context_used"),
             )
+            self._park_task_board(key, live["log"].added(), turn_received_at, req.turn_id)
             raise
         self._stash_recovery(key, outcome)
         # The model's last reply is a marker: nothing is sent for it, though the turn is filed
@@ -3601,7 +3649,8 @@ class TurnPathMixin:
             # message tool answered sends no reply of its own, so its marker row stays.
             _file_composed_reply(turn_msgs, final_content)
         delivered_files = _delivered_files(turn_msgs[turn_start_idx:])
-        if self._answered_by_tool(turn_msgs[turn_start_idx:]):
+        answered_by_tool = self._answered_by_tool(turn_msgs[turn_start_idx:])
+        if answered_by_tool:
             _stamp_replied_via_tool(turn_msgs, turn_start_idx)
         if delivered_files and silence is not None:
             silence["delivered_files"] = True
@@ -3647,6 +3696,26 @@ class TurnPathMixin:
             _t4.add_done_callback(self._consolidation_tasks.discard)
         # ── End Step 4 ──────────────────────────────────────────────────────
 
+        # ── Step 5: the host's task board (background, after the reply) ──────
+        # Scheduled, never awaited: the reply is already the caller's, and the
+        # board settles a few seconds after it.
+        if self.task_board is not None:
+            shown = await self.task_board.ack_turn_notes(key)
+            self._schedule_task_board(
+                key,
+                turn_window,
+                outcome,
+                live["log"].added(),
+                turn_received_at,
+                req.turn_id,
+                fallback_models,
+                delegated=req.delegated,
+                moved_on=[n.group for n in shown if n.kind == "move_on" and n.group],
+                # The turn's own verdict rather than the marker: a turn a tool answered is not a
+                # Silent Turn whatever it ended on, and a hook's reply has cleared ``silent``.
+                silent=silent and not answered_by_tool,
+            )
+
         if origin is Origin.USER:
             self._maybe_annotate_tail(session, _turn_start())
 
@@ -3690,6 +3759,110 @@ class TurnPathMixin:
         preview = final_content[:120] + "..." if len(final_content) > 120 else final_content
         logger.info("Response to {}:{}: {}", channel, sender_id, preview)
         return (final_content, [])
+
+    def _park_task_board(self, key: str, turn_added: list[dict], turn_at: str, turn_id: str | None) -> None:
+        """Park what a turn that failed or was stopped dispatched (``park_dispatches``): the
+        board makes no call after it, and the next update places the work."""
+        from raven.agent.task_board.dispatches import turn_dispatches
+        from raven.agent.task_board.runner import park_dispatches
+
+        board = self.task_board
+        dispatches = turn_dispatches(turn_added)
+        if board is None or not dispatches:
+            return
+        task = asyncio.create_task(
+            park_dispatches(
+                board,
+                session_key=key,
+                dispatches=dispatches,
+                turn_at=turn_at,
+                turn_id=turn_id,
+                generation=board.generation(key),
+            )
+        )
+        self._consolidation_tasks.add(task)
+        task.add_done_callback(self._consolidation_tasks.discard)
+
+    def _schedule_task_board(
+        self,
+        key: str,
+        window: list[dict],
+        outcome: LoopOutcome | None,
+        turn_added: list[dict],
+        turn_at: str,
+        turn_id: str | None,
+        fallback_models: list[str] | None,
+        *,
+        delegated: dict[str, Any] | None,
+        moved_on: list[str],
+        silent: bool,
+    ) -> None:
+        """Start the host's post-turn task board call for the turn that just ended.
+
+        It sends the tools array, model, effort and tool choice the turn's last call
+        carried, through the same strategies, so it runs at the main model's settings
+        and shares that call's cached prefix up to the reply; only the instruction
+        after it is new. Nothing forces the tool: a forced choice voids Anthropic's
+        cached messages and several providers refuse one outright. The dispatches
+        come from what the turn added -- a spawn still in the history belongs to the
+        turn that made it. ``delegated`` (the request's mark of the result that
+        opened the turn) and ``moved_on`` (the groups the notes it was shown named)
+        say what the turn is about, when anything does.
+        """
+        from raven.agent.task_board.dispatches import delegated_handle, turn_dispatches
+        from raven.agent.task_board.runner import run_post_turn, should_run
+
+        board = self.task_board
+        if board is None or outcome is None:
+            return
+        if outcome.status != "completed":
+            # A turn whose provider failed after a tool had answered returns rather than
+            # raises, and so does one cut short; neither makes the call, and what it
+            # dispatched waits in unassigned as the exits that raise park it.
+            self._park_task_board(key, turn_added, turn_at, turn_id)
+            return
+        dispatches = turn_dispatches(turn_added)
+        if outcome.last_tools is None or not window:
+            return
+        if not should_run(outcome.status, dispatches, silent=silent):
+            return
+        tools, model = outcome.last_tools, outcome.last_model or self.model
+        # The turn's own effort, None included, as the turn sends it: a key left out
+        # lets the provider fill it from the copy frozen at its construction.
+        effort = outcome.last_effort
+        # A turn whose array lacked the tool -- withheld by a deploy's disabledTools --
+        # leaves the model nothing to answer the instruction with.
+        if not any((t.get("function") or {}).get("name") == "task_board" for t in tools):
+            return
+
+        async def call(rows: list[dict]) -> LLMResponse:
+            with _llm_purpose("task_board"), usage_context.bind(key):
+                call_messages, call_tools, call_model = await self.strategies.before_llm_call(rows, tools, model)
+                return await self.provider.chat_with_retry(
+                    messages=merge_mid_turn(call_messages),
+                    tools=call_tools,
+                    model=call_model,
+                    fallback_models=fallback_models,
+                    reasoning_effort=effort,
+                )
+
+        task = asyncio.create_task(
+            run_post_turn(
+                board,
+                session_key=key,
+                call=call,
+                window=list(window),
+                dispatches=dispatches,
+                turn_at=turn_at,
+                turn_id=turn_id,
+                now_ms=board.now_ms,
+                generation=board.generation(key),
+                delegated=[handle] if (handle := delegated_handle(delegated)) else [],
+                moved_on=moved_on,
+            )
+        )
+        self._consolidation_tasks.add(task)
+        task.add_done_callback(self._consolidation_tasks.discard)
 
     def _save_broken_turn(
         self,

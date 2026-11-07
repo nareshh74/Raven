@@ -44,6 +44,7 @@ from raven.agent.subagent import charter as charter_mod
 from raven.agent.subagent.role import is_subagent_process
 from raven.agent.tools.ask_user import DEFAULT_TIMEOUT_S
 from raven.contracts.token_strategy import UsageSnapshot
+from raven.providers import effort_levels
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -512,12 +513,78 @@ class WiringMixin:
         it only at a restart. Sent as an explicit argument instead, which is
         the path a session's pinned effort already takes.
 
-        None passes nothing, which leaves the provider's own default standing
-        -- an explicit None would switch it off instead.
+        None is an answer, not an absence: the turn sends it as an explicit
+        None, which the provider takes as its own default (nothing on the
+        wire). Leaving the key out instead let the provider fill it from that
+        frozen copy, so a key cleared on a running gateway kept every call at
+        the word it booted with (``session_effort.in_force`` says the rule).
         """
         from raven.config.live import held, reasoning_effort
 
         return held(_EFFORT_KEY, lambda: reasoning_effort(self._live_config))
+
+    def session_reasoning_effort(
+        self,
+        session_key: str | None,
+        pick: str | None = None,
+        model: str | None = None,
+    ) -> str | None:
+        """The reasoning effort this session's own calls run at, short of a hook's override.
+
+        ``session_effort.in_force`` over this loop's inputs: the pick the caller
+        read off the session's record, the session's mode's word, and the
+        configured default as the file has it now. ``model`` is the id the loop
+        was handed for this turn -- the router's pick when it made one, else the
+        session's own -- and bounds the **pick** (``session_effort.clamp``): a
+        level it does not declare, by LiteLLM's table or its provider overlay,
+        is dropped rather than sent. The mode's word and the configured default
+        are not narrowed here; they are not this conversation's pick and were
+        sent as they stand before the pick existed. Beside ``session_tier`` for
+        the reason it gives -- the turn and the RPC need the one rule, and the
+        policy it reads lives here -- and reached on ``self`` by the turn, so
+        nothing imports anything new.
+        """
+        from raven.agent import session_effort
+        from raven.providers.overlay import declared_for
+        from raven.providers.registry import find_by_model, split_model_id
+
+        if model:
+            model_id = model
+            serving = getattr(self.provider, "provider_name", "") or ""
+        elif session_key and self.has_session_binding(session_key):
+            binding = self.binding_for_session(session_key)
+            model_id = binding.model
+            serving = getattr(binding.provider, "provider_name", "") or ""
+        else:
+            model_id = self.model
+            serving = getattr(self.provider, "provider_name", "") or ""
+        provider, _rest = split_model_id(model_id)
+        if not provider:
+            spec = find_by_model(model_id)
+            provider = getattr(spec, "name", "") if spec else ""
+        # The section the loop's binding actually sends through answers for
+        # both the overlay and the ladder; the id's own vendor is the fallback
+        # for a provider that cannot name a single section (a multi-vendor
+        # resolver, or a routed endpoint built with no section of its own).
+        provider = serving or provider
+        levels = effort_levels.levels_for(
+            model_id,
+            declared_for(self._live_config.get("providers") or {}, provider, model_id),
+            provider=provider,
+        )
+        valid_pick = session_effort.clamp(pick, levels)
+        if pick is not None and valid_pick is None:
+            logger.debug(
+                "session {}: reasoning effort {} is not declared by {}; using the session default",
+                session_key,
+                pick,
+                model_id,
+            )
+        return session_effort.in_force(
+            valid_pick,
+            self.session_policy(session_key or "").reasoning_effort,
+            self.default_reasoning_effort,
+        )
 
     @property
     def personalization_enabled(self) -> bool:
@@ -1569,6 +1636,15 @@ class WiringMixin:
                 verdict_config=self.subagent_dag_config,
             )
         )
+        # The host's own record of the conversation's matters. Host-only for the
+        # same reason as everything above: a subagent's turns are its caller's
+        # business, and a board kept there would record the caller's matters twice.
+        if self._task_board_config.enabled:
+            from raven.agent.task_board.service import TaskBoardService
+            from raven.agent.task_board.tool import TaskBoardTool
+
+            self.task_board = TaskBoardService(self.sessions)
+            self.tools.register(TaskBoardTool(self.task_board, loop=self))
         # The two close the array, in this order, so the roster spawn's
         # description ends with is the last thing the array says and the graph
         # tool's pointer to it lands on the tool read right after.
@@ -1732,7 +1808,8 @@ class WiringMixin:
 
         The contributed session observers ride this same lifecycle: attached
         to the session store here, detached in :meth:`stop_plugin_services`
-        (paper: contracts/session_events.py).
+        (paper: contracts/session_events.py). The host's own task board joins
+        them, so a deleted conversation's board goes with it.
         """
         if self._plugin_services_started:
             return
@@ -1751,7 +1828,8 @@ class WiringMixin:
                 continue
             started.append(service)
         self._started_services = tuple(started)
-        self.sessions.set_delete_observers(self.session_observers)
+        board = (self.task_board,) if self.task_board is not None else ()
+        self.sessions.set_delete_observers((*self.session_observers, *board))
 
     async def stop_plugin_services(self) -> None:
         """Stop started services, newest first; idempotent, loud on error.
@@ -2115,9 +2193,18 @@ class WiringMixin:
         )
 
     def _set_tool_context(
-        self, channel: str, chat_id: str, message_id: str | None = None, session_key: str | None = None
+        self,
+        channel: str,
+        chat_id: str,
+        message_id: str | None = None,
+        session_key: str | None = None,
+        surface: str | None = None,
     ) -> None:
-        """Update context for all tools that need routing info."""
+        """Update context for all tools that need routing info.
+
+        ``surface`` goes to the tools that start runs, whose results come back as
+        turns of their own: the front end the turn declared is where those are read.
+        """
         # Before the per-tool contexts because the schema is assembled from this
         # same turn: a channel-bound tool is withheld by the registry, not by
         # its own refusal (see ToolRegistry.set_channel).
@@ -2132,20 +2219,22 @@ class WiringMixin:
             "cancel_dag",
             "resolve_dag_node",
             "context_retrieve",
+            "task_board",
         ):
             if tool := self.tools.get(name):
                 if not hasattr(tool, "set_context"):
                     continue
                 if name == "message":
                     tool.set_context(channel, chat_id, message_id)
+                elif name in ("spawn", "run_subagent_dag"):
+                    tool.set_context(channel, chat_id, session_key or f"{channel}:{chat_id}", surface=surface)
                 elif name in (
-                    "spawn",
-                    "run_subagent_dag",
                     "deliver_files",
                     "dag_status",
                     "cancel_dag",
                     "resolve_dag_node",
                     "context_retrieve",
+                    "task_board",
                 ):
                     tool.set_context(channel, chat_id, session_key or f"{channel}:{chat_id}")
                 else:
@@ -2157,7 +2246,7 @@ class WiringMixin:
         # to that turn's own address rather than the last human conversation's.
         if self._playbooks is not None:
             self._playbooks.set_context(
-                channel=channel, chat_id=chat_id, session_key=session_key or f"{channel}:{chat_id}"
+                channel=channel, chat_id=chat_id, session_key=session_key or f"{channel}:{chat_id}", surface=surface
             )
 
     def dag_tools(self) -> list[Any]:

@@ -1577,6 +1577,137 @@ class TasksListResult(_Strict):
     tasks: list[TaskRow]
 
 
+TaskGroupStatus = Literal["needs_you", "running", "idle", "completed"]
+
+
+class TaskLinkRef(_Strict):
+    """A Task a Progress Step started, addressed the way ``tasks.list`` addresses it."""
+
+    kind: TaskKind
+    id: str
+    summary: str
+
+
+class ProgressStep(_Strict):
+    """One turn's advance on one Task Group, keyed by its turn's opening timestamp.
+
+    On a step that left its group ``needs_you``, ``summary`` opens with what the user is asked and
+    ``questions`` lists each question about the matter; ``questions`` is empty on every other step.
+    """
+
+    id: str
+    turn_at: str
+    turn_id: str | None = None
+    title: str
+    summary: str
+    questions: list[str]
+    tasks: list[TaskLinkRef]
+
+
+class TaskGroup(_Strict):
+    """One matter a conversation is pushing, with its Progress Steps in time order."""
+
+    id: str
+    title: str
+    summary: str
+    status: TaskGroupStatus
+    created_at: int
+    updated_at: int
+    steps: list[ProgressStep]
+
+
+class PendingDispatch(_Strict):
+    """A dispatch whose turn's board update never landed; the next update places it."""
+
+    handle: str
+    summary: str
+    turn_at: str
+    turn_id: str | None = None
+
+
+class TaskBoard(_Strict):
+    """One host conversation's Task Board."""
+
+    version: int
+    groups: list[TaskGroup]
+    unassigned: list[PendingDispatch]
+
+
+class TasksBoardParams(_Strict):
+    session_key: str
+
+
+TaskBoardCategory = Literal["needs_you", "running", "idle", "completed"]
+
+
+class TaskBoardCard(_Strict):
+    """One Task Group on the Task Board page: where it came from, what it is, and what it needs."""
+
+    session_key: str
+    session_title: str
+    group_id: str
+    title: str
+    summary: str
+    status: TaskGroupStatus
+    created_at: int
+    updated_at: int
+    category: TaskBoardCategory
+    running_since_ms: int | None = None
+    events: int
+    sub_agents: int
+
+
+class TasksBoardsParams(_Strict):
+    include_completed: bool = False
+
+
+class TasksBoardsResult(_Strict):
+    cards: list[TaskBoardCard]
+    completed_count: int
+    needs_you_count: int
+
+
+class TasksBoardResult(_Strict):
+    board: TaskBoard
+    lineage: dict[str, str]
+
+
+class TasksSetGroupStatusParams(_Strict):
+    session_key: str
+    group_id: str
+    status: Literal["completed", "idle"]
+
+
+class TasksSetGroupStatusResult(_Strict):
+    board: TaskBoard
+    lineage: dict[str, str]
+
+
+class TasksIgnoreQuestionParams(_Strict):
+    session_key: str
+    group_id: str
+    step_id: str
+    question: str
+
+
+class TasksIgnoreQuestionResult(_Strict):
+    board: TaskBoard
+    lineage: dict[str, str]
+
+
+class TasksBoardUpdatedPayload(_Strict):
+    session_key: str
+    board: TaskBoard
+    lineage: dict[str, str]
+
+
+class TasksBoardUpdatedEvent(_Strict):
+    """A conversation's Task Board after a write; a reconnecting client reads ``tasks.board``."""
+
+    type: Literal["tasks.board_updated"]
+    payload: TasksBoardUpdatedPayload
+
+
 class CronMissedItem(_Strict):
     name: str
     scheduled_at: str
@@ -1721,6 +1852,7 @@ TurnEvent = Annotated[
         MediaEvent,
         SessionTitledEvent,
         SessionNamingEndedEvent,
+        TasksBoardUpdatedEvent,
     ],
     Field(discriminator="type"),
 ]
@@ -2052,6 +2184,10 @@ class TurnSendParams(_Strict):
     # at its next tool-loop gap, the way a channel's mid-turn message is
     # merged. On an idle lane it is an ordinary send.
     busy: Literal["inject"] | None = None
+    # A Task Group the message moves on. Noted on the board before the turn is
+    # submitted, so the note and the message arrive together; ignored for a
+    # message merged into a running turn or sent to an instance.
+    move_on: str | None = None
 
 
 class TurnSendResult(_Strict):
@@ -2203,6 +2339,10 @@ class ModelLabel(_Strict):
     capabilities: list[str] = Field(default_factory=list)
     input_modalities: list[str] = Field(default_factory=list)
     output_modalities: list[str] = Field(default_factory=list)
+    #: The words a provider's ``model_overlay.reasoningEfforts`` declares for
+    #: this model; the picker's effort row reads the live answer instead, and
+    #: this carries what the label itself can state.
+    reasoning_efforts: list[str] = Field(default_factory=list)
     #: The bucket a model list files this model under, from what it writes
     #: (``registry_data.kind_of``): a model that reads images is still text.
     kind: Literal["text", "image", "audio", "video", "embedding", "reranker"]
@@ -2441,6 +2581,11 @@ class ModelAddModelParams(_Strict):
     carries the icon row every other model has. Names outside the published
     vocabulary are refused rather than stored -- a surface draws one icon per
     name and has nothing to draw for a name it has never heard of.
+
+    ``reasoning_efforts`` is not display data: it is this model's declaration
+    for the per-conversation effort picker, and the server validates it against
+    the effort ladder. ``None`` leaves a stored declaration alone; ``[]`` clears
+    it.
     """
 
     slug: str
@@ -2452,6 +2597,7 @@ class ModelAddModelParams(_Strict):
     capabilities: list[str] | None = None
     input_modalities: list[str] | None = None
     output_modalities: list[str] | None = None
+    reasoning_efforts: list[str] | None = None
     session_id: str | None = None
 
 
@@ -3720,6 +3866,40 @@ class SessionSetModeResult(_Strict):
     )
 
 
+class SessionSetEffortParams(_Strict):
+    session_key: str
+    effort: str | None = Field(
+        None,
+        description="The reasoning effort this session's own model calls run at, one of the words in options. "
+        "Omit it to report without changing.",
+    )
+    clear: bool = Field(
+        False,
+        description="Drop the session's own pick and follow the default again. Wins over effort when both are given.",
+    )
+    model: str | None = Field(
+        None,
+        description="The model to answer for when the caller has no session yet (a draft). "
+        "Omit for a session's own model.",
+    )
+
+
+class SessionSetEffortResult(_Strict):
+    session_key: str
+    effort: str | None = Field(
+        None,
+        description="The session's own pick where the model declares it, else null: a stored pick the model "
+        "does not offer reads as null, and the turn runs at default.",
+    )
+    default: str | None = Field(
+        None,
+        description="What the session runs at with no pick of its own: its mode's effort where the catalogue sets "
+        "one, else agents.defaults.reasoningEffort, else null for the provider's own default. Not narrowed by the "
+        "model.",
+    )
+    options: list[str] = Field(default_factory=list, description="The words this model accepts, least first.")
+
+
 # ---------------------------------------------------------------------------
 # Method registry — used by tests/test_rpc_schema_match.py to walk every
 # method and compare its Pydantic Params/Result models against the OpenRPC
@@ -4050,6 +4230,13 @@ class SessionInitInfo(_Strict):
         ),
     )
     running: bool = Field(default=False, description="A turn is in flight on this session right now.")
+    reasoning_effort: str | None = Field(
+        default=None,
+        description=(
+            "The reasoning effort this session's own model calls run at: its own pick (session.set_effort), "
+            "else its mode's, else agents.defaults.reasoningEffort; null when the provider's own default stands."
+        ),
+    )
     read_only: bool | None = Field(
         default=None,
         description="True for an Imported Conversation, which nothing can change; absent on every other session.",
@@ -7231,6 +7418,7 @@ METHOD_MODELS: dict[str, tuple[type[BaseModel], type[BaseModel]]] = {
     "session.set_knowledge": (SessionSetKnowledgeParams, SessionSetKnowledgeResult),
     "session.set_harness": (SessionSetHarnessParams, SessionSetHarnessResult),
     "session.set_mode": (SessionSetModeParams, SessionSetModeResult),
+    "session.set_effort": (SessionSetEffortParams, SessionSetEffortResult),
     # ext.list / cron.* / settings.* / channels.status / fs.* -- the console
     "ext.list": (ExtListParams, ExtListResult),
     "cron.list": (CronListParams, CronListResult),
@@ -7421,6 +7609,10 @@ METHOD_MODELS: dict[str, tuple[type[BaseModel], type[BaseModel]]] = {
     "dag.get": (DagGetParams, DagGetResult),
     "dag.node": (DagNodeParams, DagNodeResult),
     "tasks.list": (TasksListParams, TasksListResult),
+    "tasks.board": (TasksBoardParams, TasksBoardResult),
+    "tasks.boards": (TasksBoardsParams, TasksBoardsResult),
+    "tasks.set_group_status": (TasksSetGroupStatusParams, TasksSetGroupStatusResult),
+    "tasks.ignore_question": (TasksIgnoreQuestionParams, TasksIgnoreQuestionResult),
 }
 
 __all__ = [

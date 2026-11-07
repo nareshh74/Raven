@@ -953,6 +953,14 @@ button, [role="button"] { -webkit-user-select: none; user-select: none; }
    quiet one: the list reads as a list of names, with the icons as marks against
    them rather than as a second column of equal weight. */
 .navi svg { width: 16px; height: 16px; }
+/* How many Task Groups wait on the owner, at the row's far end: the one count
+   in the strip, so it takes the accent rather than the row's quiet ink. */
+.chrome-nav-badge {
+  margin-left: auto; min-width: 18px; padding: 0 6px; border-radius: 999px;
+  background: var(--amber); color: var(--ink-on-accent);
+  font-size: 11px; font-weight: 600; line-height: 17px; text-align: center;
+  font-variant-numeric: tabular-nums;
+}
 .navi:hover, .sess:hover { background: var(--rail-hover); color: var(--rail-ink-on); }
 /* Selected and hovered are the same move at two depths -- one flat step of
    ground, --hover then --selected -- and the weight of the label carries the
@@ -1591,7 +1599,9 @@ button, [role="button"] { -webkit-user-select: none; user-select: none; }
   color: var(--text); min-width: 0; display: flex; align-items: center; gap: 7px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.dlg .dgr .v.err { color: var(--clay); white-space: normal; }
+/* A delegated call's detail is a reading of how it went, not an alarm: the
+   failure word and the step's own error text carry it. */
+.dlg .dgr .v.err { color: var(--muted); white-space: normal; }
 .dlg .who {
   flex: none; font-family: var(--mono); font-size: 10.5px; color: var(--muted);
   border: 1px solid var(--line); border-radius: 5px; padding: 0.5px 6px;
@@ -1599,7 +1609,7 @@ button, [role="button"] { -webkit-user-select: none; user-select: none; }
 .dlg .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--line); flex: none; }
 .dlg .dot.run { background: var(--gold); animation: breathe 1.5s ease-in-out infinite; }
 .dlg .dot.ok { background: var(--moss); }
-.dlg .dot.bad { background: var(--clay); }
+.dlg .dot.bad { background: var(--muted); }
 .dlg .dot.skip { background: var(--faint); }
 /* ── the dag graph ───────────────────────────────────────────────────────
    What `DagGraph` draws wherever it is mounted -- today the desk's task board,
@@ -1650,8 +1660,8 @@ button, [role="button"] { -webkit-user-select: none; user-select: none; }
 .sdlv .st { display: inline-flex; align-items: center; gap: 5px; flex: none; color: var(--muted); }
 .sdlv .st .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--faint); flex: none; }
 .sdlv.good .st .dot { background: var(--moss); }
-.sdlv.bad .st { color: var(--clay); }
-.sdlv.bad .st .dot { background: var(--clay); }
+.sdlv.bad .st { color: var(--muted); }
+.sdlv.bad .st .dot { background: var(--muted); }
 .sdlv.warn .st { color: var(--gold); }
 .sdlv.warn .st .dot { background: var(--gold); }
 .sdlv.dim .st { color: var(--faint); }
@@ -1759,7 +1769,6 @@ button, [role="button"] { -webkit-user-select: none; user-select: none; }
    glyphs beside it, and the same three states. */
 .wrow .transcript-ic { width: 14px; height: 14px; flex: none; color: var(--chat-quiet); }
 .wrow.tog:hover .transcript-ic { color: var(--muted); }
-.wrow.bad .transcript-ic { color: var(--chat-danger); }
 .wrow.run .transcript-ic { animation: breathe 1.5s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) { .wrow.run .transcript-ic { animation: none; opacity: .62; } }
 
@@ -1830,9 +1839,9 @@ button, [role="button"] { -webkit-user-select: none; user-select: none; }
 .wrow .diffn { flex: none; font-variant-numeric: tabular-nums; font-size: var(--fs-body); }
 .wrow .diffn .a { color: var(--moss); }
 .wrow .diffn .d { color: var(--clay); }
-.chip.bad { color: var(--clay); background: color-mix(in oklab, var(--clay) 12%, transparent); }
-.wrow.bad .vb, .wrow.bad .ic, .wrow.bad .g { color: var(--chat-danger); }
-.wrow .err { color: var(--chat-danger); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A failed call is ordinary work: the word says so, the colour does not. */
+.chip.bad { color: var(--muted); background: var(--surface); }
+.wrow .err { color: var(--muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wrow.wait .vb, .wrow.wait .ic { color: var(--amber); }
 
 /* detail card: the only place raw commands, paths and output appear. A titled
@@ -1877,7 +1886,7 @@ button, [role="button"] { -webkit-user-select: none; user-select: none; }
 .dtl pre .pth:hover { color: var(--amber); text-decoration: underline; text-underline-offset: 2px; }
 .dtl .exit { font-size: 10.5px; padding: 1px 6px; border-radius: 8px; }
 .dtl .exit.ok { color: var(--moss); background: color-mix(in oklab, var(--moss) 12%, transparent); }
-.dtl .exit.bad { color: var(--clay); background: color-mix(in oklab, var(--clay) 12%, transparent); }
+.dtl .exit.bad { color: var(--muted); background: var(--surface); }
 .dtl .dline { white-space: pre-wrap; overflow-wrap: anywhere; padding: 0 6px; margin: 0 -6px; }
 .dtl .dline.a { background: color-mix(in oklab, var(--moss) 13%, transparent); color: var(--moss); }
 .dtl .dline.d { background: color-mix(in oklab, var(--clay) 13%, transparent); color: var(--clay); }
@@ -2915,9 +2924,10 @@ textarea:focus, textarea:focus-visible,
    the person is declaring it to be. */
 .mpick .model-typed { color: var(--amber); }
 .mpick .model-typed .nm { font-family: var(--mono); font-size: 12.5px; }
-/* The sub-agent tier, as one row of this picker: a setting of the same
-   conversation, drawn where the model is chosen rather than as a chip of its
-   own (state/tier.ts). */
+/* The sub-agent tier and the reasoning effort, as two rows of this picker:
+   settings of the same conversation, drawn where the model is chosen rather
+   than as chips of their own (state/tier.ts, state/effort.ts). The effort row
+   borrows the tier row's rules whole, so the two read as one block. */
 .mpick .model-tier { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; padding: 8px 12px 6px; border-top: 1px solid var(--line-soft); }
 .mpick .model-tier-k { flex: 1; min-width: 0; display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--faint); }
 .mpick .model-tier-k svg { width: 12px; height: 12px; flex: none; }
@@ -2934,6 +2944,11 @@ textarea:focus, textarea:focus-visible,
 .mpick .model-seg button { font-size: 11px; padding: 2px 9px; border-radius: 5px; color: var(--muted); }
 .mpick .model-seg button[aria-checked="true"] { background: var(--paper); color: var(--text); font-weight: 600;
   box-shadow: 0 1px 2px rgba(0, 0, 0, .08); }
+/* The effort row's control takes the line under its label: five rungs do not
+   fit beside a label in 340px, and a label squeezed onto two lines read as two
+   rows. Stretched, so the five share the width as one control. */
+.mpick .model-effort .model-seg { flex: 1 1 100%; }
+.mpick .model-effort .model-seg button { flex: 1; text-align: center; }
 .mpick .foot { border-top: 1px solid var(--line-soft); padding: 7px 12px;
   display: flex; justify-content: space-between; align-items: center; }
 .mpick .foot button { font-size: 11.5px; color: var(--amber); }
@@ -5876,6 +5891,18 @@ body:has(.app[data-page="on"]) #deskHost { display: none; }
 .desk-tabs button .lb { display: none; font-weight: 600; }
 .desk-tabs button[aria-selected="true"] .lb { display: inline; }
 .desk-body { flex: 1; min-height: 0; overflow: auto; padding: 5px 0; }
+/* The Tasks tab's board paints on --surface (features/tasks/styles.css's
+   `.tkboard`). The palette's own ground is --ink, which showed through the
+   transparent drag strip and the body's 5px padding as a white band above and
+   below the board. The frame takes the ground the tab actually paints on; the
+   selected tab, the unread count and the flat list's hover move one step up
+   the same ramp so they stay distinct, and the header's rule takes the
+   stronger line the white ground used to supply. */
+.desk-palette[data-tab="tasks"] { background: var(--surface); }
+.desk-palette[data-tab="tasks"] .desk-drag { border-bottom-color: var(--line); }
+.desk-palette[data-tab="tasks"] .desk-tabs button[aria-selected="true"] { background: var(--raised); }
+.desk-palette[data-tab="tasks"] .desk-count { border-color: var(--surface); }
+.desk-palette[data-tab="tasks"] .salist.tasks .sarow:hover { background: var(--raised); }
 /* The size handle sits on whichever edge is FREE, which anchored is the left
    one: the right edge is pinned under the launcher and hard against the
    window's own gutter, so a corner there is both the hardest place on screen
@@ -5953,6 +5980,17 @@ body:has(.app[data-page="on"]) #deskHost { display: none; }
 .desk-dlv-row.gone { opacity: .55; }
 .desk-dlv-row .dlv-gone { flex: none; padding: 0 5px; border: 1px solid var(--line); border-radius: 999px;
   color: var(--clay); font: 9px/1.6 var(--mono); font-style: normal; }
+/* The row opens the file; the link beside it hands it over as an attachment,
+   which is the one thing that reaches a reader on another machine. A sibling
+   of the button rather than a child of it: a link inside a button is not a
+   link, it is a button that navigates. So the row keeps its own click, and the
+   link is a control of its own beside it. */
+.desk-dlv { position: relative; display: block; }
+.desk-dlv:has(.desk-dl) .desk-dlv-row { padding-right: 36px; }
+.desk-dl { position: absolute; top: 50%; right: 9px; transform: translateY(-50%);
+  display: grid; place-items: center; width: 24px; height: 24px; border-radius: 6px;
+  color: var(--muted); transition: color .12s, background .12s; }
+.desk-dl:hover { color: var(--text); background: var(--surface); }
 
 .agent-roster { padding: 0; gap: 0; }
 .agent-group { min-width: 0; }
@@ -6338,6 +6376,10 @@ body:has(.app[data-page="on"]) #deskHost { display: none; }
    the same 36px gutters `.dock` gives it, so the grid's edges line up with the
    input box the reader just left rather than sitting inside a narrower one. */
 #extAgentsPage .wrap, #connectionsPage .wrap { max-width: calc(var(--col) + 72px); padding-left: 36px; padding-right: 36px; }
+/* The task board is a workspace too: its columns are the content, and the
+   reading column's cap left a wide window's sides empty while they squeezed
+   into the middle. */
+#tasksBoardPage .wrap { max-width: none; }
 #kbPage .wrap {
   max-width: none; height: 100%; min-height: 0;
   display: flex; flex-direction: column; padding: 18px 22px 22px;
@@ -7058,8 +7100,8 @@ body:has(.app[data-page="on"]) #deskHost { display: none; }
   text-decoration: none;
 }
 /* The prototype's own three-state dot, shared with the task pane's status
-   bar: moss running, clay only for a failure or an interruption, faint grey
-   for everything else settled -- carried by `data-st` rather than a new
+   bar: moss running, a darker grey for a failure or an interruption, faint
+   grey for everything else settled -- carried by `data-st` rather than a new
    class. */
 .sarow.task[data-st="run"] .dot {
   background: var(--moss);
@@ -7067,16 +7109,16 @@ body:has(.app[data-page="on"]) #deskHost { display: none; }
   animation: pulse 1.8s ease-in-out infinite;
 }
 .sarow.task[data-st="error"] .dot {
-  background: var(--clay);
-  box-shadow: 0 0 0 3px color-mix(in oklab, var(--clay) 15%, transparent);
+  background: var(--muted);
+  box-shadow: none;
   animation: none;
 }
 .sarow.task[data-st="ok"] .dot { background: var(--faint); box-shadow: none; animation: none; }
 .tline { display: flex; align-items: baseline; gap: 8px; }
 .tline .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* A failed run says so in the one line it has. Colour rather than a word alone,
-   because the second line is what the eye lands on when scanning a group. */
-.sarow.task .st.fail { color: var(--clay); }
+/* A failed run says so in the one line it has: the words, in the same muted
+   register as the rest of the line, not a second colour code. */
+.sarow.task .st.fail { color: var(--muted); }
 
 /* The task view: what one delegated run is doing, step by step.
    Head, then the chips it produced, then either the node column or the card
@@ -7128,7 +7170,7 @@ body:has(.app[data-page="on"]) #deskHost { display: none; }
 .tkview > .tkchips { margin: 2px 0 4px; }
 /* Why a run stopped, at the top, where a reader looks before reading the
    steps. One line: the steps below say the rest. */
-.tkfail { font-size: 12px; line-height: 1.6; color: var(--clay);
+.tkfail { font-size: 12px; line-height: 1.6; color: var(--muted);
   background: var(--surface); border-radius: 8px; padding: 8px 10px; }
 
 /* ── one node, described ───────────────────────────────────────────────
@@ -7265,14 +7307,14 @@ body:has(.app[data-page="on"]) #deskHost { display: none; }
   color: var(--muted); }
 .tkans { font-size: 12.5px; line-height: 1.8; color: var(--text); white-space: pre-wrap; }
 /* Where the answer would be, when the run stopped instead of answering. */
-.tkstop { font-size: 12px; line-height: 1.7; color: var(--clay);
+.tkstop { font-size: 12px; line-height: 1.7; color: var(--muted);
   background: var(--surface); border-radius: 8px; padding: 9px 11px; }
 .tklive { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--faint); }
 
-/* The same token the runtime uses for the same condition, carried by colour.
-   Beside the name, never instead of it. */
-.tkerr { flex: none; font-family: var(--mono); font-size: 10px; color: var(--clay);
-  background: color-mix(in oklab, var(--clay) 10%, var(--paper)); border-radius: 5px; padding: 1px 6px; }
+/* The same token the runtime uses for the same condition, carried by the word
+   rather than a colour. Beside the name, never instead of it. */
+.tkerr { flex: none; font-family: var(--mono); font-size: 10px; color: var(--muted);
+  background: var(--surface); border-radius: 5px; padding: 1px 6px; }
 
 
 
