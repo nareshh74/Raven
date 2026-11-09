@@ -2865,6 +2865,50 @@
       "zh": "长期记忆当前写不进去，这段时间的对话不会被记住。",
       "en": "Long-term memory is not being written; nothing from here on will be remembered."
     },
+    "gui.mem.cloud_bad_key": {
+      "en": "That key was rejected. Check it and try again.",
+      "zh": "这个 Key 没有通过校验，请检查后重试。"
+    },
+    "gui.mem.cloud_change": {
+      "en": "Change key",
+      "zh": "更换 Key"
+    },
+    "gui.mem.cloud_change_sub": {
+      "en": "Paste a new key to replace the one on file.",
+      "zh": "填入新的 Key 来替换已保存的 Key。"
+    },
+    "gui.mem.cloud_change_t": {
+      "en": "Update EverOS Cloud key",
+      "zh": "更新 EverOS Cloud Key"
+    },
+    "gui.mem.cloud_checking": {
+      "en": "Checking...",
+      "zh": "校验中..."
+    },
+    "gui.mem.cloud_get": {
+      "en": "Get a key at everos.evermind.ai",
+      "zh": "在 everos.evermind.ai 获取 Key"
+    },
+    "gui.mem.cloud_ph": {
+      "en": "EverOS Cloud API key",
+      "zh": "EverOS Cloud API Key"
+    },
+    "gui.mem.cloud_save": {
+      "en": "Save",
+      "zh": "保存"
+    },
+    "gui.mem.reload_wait": {
+      "en": "Saved. It applies at the next start.",
+      "zh": "已保存。下次启动时生效。"
+    },
+    "gui.mem.cloud_sub": {
+      "en": "Long-term memory runs on the hosted EverOS. Paste an API key to turn it on.",
+      "zh": "长期记忆将保存在 EverOS 云端。填入 API Key 即可启用。"
+    },
+    "gui.mem.cloud_t": {
+      "en": "Connect EverOS Cloud",
+      "zh": "连接 EverOS 云端"
+    },
     "gui.mem.off_t": {
       "en": "Long-term memory is not connected",
       "zh": "长期记忆没有接上"
@@ -2908,6 +2952,34 @@
     "gui.mem.hint_skill": {
       "zh": "从案例蒸馏出的做法",
       "en": "Ways of working distilled from cases"
+    },
+    "gui.mem.local_failed": {
+      "en": "Could not start EverOS. See the detail below.",
+      "zh": "无法启动 EverOS，请看下面的详情。"
+    },
+    "gui.mem.local_foreign_sub": {
+      "en": "This EverOS is one you manage, so Raven does not start it. Start it yourself; Raven reads it as soon as it answers.",
+      "zh": "这个 EverOS 由你自己管理，Raven 不会启动它。请自行启动，它一响应 Raven 就会读取。"
+    },
+    "gui.mem.local_recheck": {
+      "en": "Check again",
+      "zh": "重新检查"
+    },
+    "gui.mem.local_start": {
+      "en": "Start EverOS",
+      "zh": "启动 EverOS"
+    },
+    "gui.mem.local_starting": {
+      "en": "Starting...",
+      "zh": "启动中..."
+    },
+    "gui.mem.local_sub": {
+      "en": "Start it here; Raven uses it to keep long-term memory on this machine.",
+      "zh": "在这里启动它，Raven 会用它在本地保存长期记忆。"
+    },
+    "gui.mem.local_t": {
+      "en": "Local EverOS is not running",
+      "zh": "本地 EverOS 没有运行"
     },
     "gui.mem.meta_confidence": {
       "zh": "信心",
@@ -2973,6 +3045,38 @@
       "zh": "关键洞察",
       "en": "Key insight"
     },
+    "gui.mem.src": {
+      "zh": "记忆位置",
+      "en": "Memory source"
+    },
+    "gui.mem.src_cloud": {
+      "zh": "EverOS 云端",
+      "en": "EverOS Cloud"
+    },
+    "gui.mem.src_local": {
+      "zh": "本地 EverOS",
+      "en": "Local EverOS"
+    },
+    "gui.mem.src_missing": {
+      "zh": "这个 Raven 未安装",
+      "en": "Not installed in this Raven"
+    },
+    "gui.mem.switch_busy_sub": {
+      "en": "Long-term memory switches when that turn finishes. Continue?",
+      "zh": "切换会在当前对话结束后生效。继续吗？"
+    },
+    "gui.mem.switch_busy_t": {
+      "en": "A conversation is in progress",
+      "zh": "有对话正在进行"
+    },
+    "gui.mem.switch_confirm": {
+      "en": "Switch anyway",
+      "zh": "仍然切换"
+    },
+    "gui.mem.switching": {
+      "en": "Switching...",
+      "zh": "切换中..."
+    },
     "gui.mem.tab_case": {
       "zh": "经验",
       "en": "Cases"
@@ -2986,8 +3090,8 @@
       "en": "Profile"
     },
     "gui.mem.tab_skill": {
-      "zh": "技艺",
-      "en": "Know-how"
+      "zh": "技能",
+      "en": "Skills"
     },
     "gui.meter.running": {
       "en": "running",
@@ -5966,6 +6070,18 @@
     "gui.agent.short_kimi_code": {
       "en": "Moonshot's coding agent",
       "zh": "月之暗面的编码智能体"
+    },
+    "gui.agent.short_minimax_code": {
+      "en": "MiniMax's coding agent",
+      "zh": "MiniMax 的编码智能体"
+    },
+    "gui.agent.minimax_cli_note": {
+      "en": "The MiniMax Code desktop app does not include the mcode CLI; install it separately with the command below. npm 12 and newer block install-time scripts, so the command carries the vendor's approval for the two packages that need it; npm 11 and older run those scripts anyway, and the ones that do not know the flag warn about it and still install.",
+      "zh": "MiniMax Code 桌面端不包含 mcode CLI，请用下面的命令单独安装。npm 12 及以上版本默认不执行安装脚本，所以命令里带了厂商给这两个包的脚本批准；npm 11 及更早的版本照常执行这些脚本，其中不认识这个参数的版本会打印一条警告，但安装照样完成。"
+    },
+    "gui.agent.minimax_sign_in_note": {
+      "en": "If your MiniMax account is not on the cn region, add --region global (or --region cn) to that command: the CLI signs into the cn account site by default. If the desktop app already holds the login, also point this agent at its data directory: set MINIMAX_DATA_DIR to the absolute path of that folder (for example /Users/you/.minimax or C:\\Users\\you\\.minimax) in this agent's env map in ~/.raven/config.json.",
+      "zh": "如果你的 MiniMax 账号不在 cn 区，请在那条命令后面加上 --region global（或 --region cn）：CLI 默认登录的是 cn 账号站。如果桌面端已经登录，还要把这个 agent 指向它的数据目录——把 MINIMAX_DATA_DIR 设成那个目录的绝对路径（例如 /Users/you/.minimax 或 C:\\Users\\you\\.minimax），写在这个 agent 在 ~/.raven/config.json 里的 env。"
     },
     "gui.agent.short_pi": {
       "en": "Pi's coding agent",
