@@ -11,7 +11,6 @@
       "reasoningEffort": "medium",
       "maxToolIterations": 40,
       "maxTokens": 16384,
-      "contextWindowTokens": 65536,
       "requestTimeoutSeconds": 600,
       "taskBoard": {
         "enabled": false
@@ -19,17 +18,18 @@
     }
   },
   "memory": {
-    "backend": "hindsight",
-    "userId": "raven-research-ng",
-    "agentId": "raven-research-ng",
+    "backend": "everos",
+    "userId": "naresh",
+    "agentId": "raven-research",
     "memoryTopK": 5
   },
   "plugins": {
     "config": {
       "everos-memory": {
-        "user_id": "raven-research-ng",
-        "agent_id": "raven-research-ng",
-        "timeout_s": 360
+        "base_url": "http://127.0.0.1:8000",
+        "root": "C:/learn/everos-local/data",
+        "port": 8000,
+        "owned": false
       },
       "research-flow": {
         "enabled": true,
@@ -121,7 +121,8 @@
       "obsidian-wiki": {
         "enabled": true
       }
-    }
+    },
+    "disabled": []
   },
   "tools": {
     "web": {
@@ -164,7 +165,7 @@
           "mcp"
         ],
         "enabled": true,
-        "command": "C:/Users/kumarnaresh/AppData/Local/hermes/tools/node-26.7.0-win32-x64/node.exe"
+        "command": "C:/Users/kumarnaresh/AppData/Local/hermes/tools/node-26.12.1-win32-x64/node.exe"
       }
     }
   },
@@ -176,7 +177,7 @@
     ]
   },
   "skillForge": {
-    "alwaysMax": 9,
+    "alwaysMax": 20,
     "localDirs": [
       {
         "name": "obsidian-wiki-ops",

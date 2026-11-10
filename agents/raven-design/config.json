@@ -62,7 +62,7 @@
           "mcp"
         ],
         "enabled": true,
-        "command": "C:/Users/kumarnaresh/AppData/Local/hermes/tools/node-26.7.0-win32-x64/node.exe"
+        "command": "C:/Users/kumarnaresh/AppData/Local/hermes/tools/node-26.12.1-win32-x64/node.exe"
       }
     }
   },
@@ -70,8 +70,8 @@
     "curator_model": ""
   },
   "memory": {
-    "backend": "hindsight",
-    "userId": "raven-design",
+    "backend": "everos",
+    "userId": "naresh",
     "agentId": "raven-design",
     "memoryTopK": 5
   },
@@ -98,15 +98,22 @@
       },
       "obsidian-wiki": {
         "enabled": true
+      },
+      "everos-memory": {
+        "base_url": "http://127.0.0.1:8000",
+        "root": "C:/learn/everos-local/data",
+        "port": 8000,
+        "owned": false
       }
-    }
+    },
+    "disabled": []
   },
   "gateway": {
     "userPool": 0,
     "systemPool": 0
   },
   "skillForge": {
-    "alwaysMax": 9,
+    "alwaysMax": 20,
     "localDirs": [
       {
         "name": "obsidian-wiki-ops",
