@@ -159,6 +159,7 @@ def build_subagent_prompt(
     tools this sub-agent lacks is still withheld.
     """
     from raven.agent.context import ContextBuilder
+    from raven.config.live import LiveConfig
     from raven.memory_engine import LocalSkillCatalog
 
     # Transient ContextBuilder just for the runtime-context builder; the
@@ -177,7 +178,7 @@ Stay focused on the assigned task. Your final response will be reported back to 
 - Agent home: {agent_home} — the agent's memory and skills."""
     ]
 
-    catalog = LocalSkillCatalog(agent_home, start_watcher=False)
+    catalog = LocalSkillCatalog(agent_home, config=LiveConfig().get().skill_forge, start_watcher=False)
     visible = filter_by_required_tools(catalog.registry.list_all(), tool_names)
     if skills_allow is not None:
         allowed = set(skills_allow)
@@ -202,7 +203,7 @@ class RavenLoopBackend:
 
     kind = "raven-loop"
     streams = True
-    _MAX_ITERATIONS = 15
+    _MAX_ITERATIONS = 60
 
     def __init__(
         self,

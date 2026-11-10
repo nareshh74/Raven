@@ -1709,9 +1709,10 @@ class SubAgentDagTool(Tool):
         graph is dispatched rarely, and a watcher on a tool that may live for a
         gateway's whole run would be a second scanner of the same directory.
         """
+        from raven.config.live import LiveConfig
         from raven.memory_engine import LocalSkillCatalog
 
-        return LocalSkillCatalog(Path(self._workspace), start_watcher=False)
+        return LocalSkillCatalog(Path(self._workspace), config=LiveConfig().get().skill_forge, start_watcher=False)
 
     def _resolve_node(self, node: DagNodeSpec) -> Any:
         """The backend one node dispatches to, or ``None`` if its agent is unknown.
