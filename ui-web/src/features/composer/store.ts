@@ -13,6 +13,7 @@ import { makeStore } from '../../state/store'
 import { show as toast } from '../../state/toast'
 import { note as transcriptNote } from '../transcript/mount'
 import * as tail from '../transcript/tail'
+import * as history from './history'
 import * as turn from './turn'
 import { previousUserTop } from './userjump'
 
@@ -46,6 +47,10 @@ export interface ComposerState {
      `liveT0` and ticking through `tick`. */
   live: boolean
   tick: number
+  /* How many delegated runs are still live, pushed in by app/install.ts from
+     the tasks store. Kept as a number here rather than importing the sibling
+     store: the page's wiring owns the one edge between the two domains. */
+  subagentRuns: number
   /* Bumped by every paint asked for through features/composer/mount.tsx. The
      views read the page's own arrays through the source, so one counter is the
      whole subscription. */
@@ -54,7 +59,7 @@ export interface ComposerState {
 
 const initial: ComposerState = {
   atts: [], queue: [], editing: null, slashOpen: false, slashRows: [], slashSel: 0,
-  live: false, tick: 0, v: 0,
+  live: false, tick: 0, subagentRuns: 0, v: 0,
 }
 
 const store = makeStore<ComposerState>({ ...initial })
@@ -127,6 +132,9 @@ export function parkDraft(): void {
 
 export function loadDraft(id: string | null): void {
   draftOwner = id || 'new'
+  /* A browse belongs to the conversation it started in: the text captured as
+     its draft must not be written into another conversation's field. */
+  history.reset()
   /* A switch starts a new transcript: the direction the last scroll took says
      nothing about where this one opens. */
   jumpReset()
@@ -180,6 +188,7 @@ export function touchDraft(): void {
 export function dropOwnedDraft(): void {
   if (draftTick) clearTimeout(draftTick)
   draftTick = null
+  history.reset()
   dropDraftText(draftOwner || 'new')
 }
 
@@ -395,10 +404,9 @@ export function dockLift(): void {
      and measuring only its children parked the pill 6px into the glass.
 
      Every direct child counts, rather than a list of classes to keep in step.
-     The running-task chip is one of them (`.tkruns`, which chrome/Dock mounts
-     above the card) and it was not on the list, so the height it added went
-     unmeasured: the chat reserved and faded for the card alone and the chip
-     covered the tail of the transcript instead of moving it up. */
+     A strip docked above the card was not on the list, so the height it added
+     went unmeasured: the chat reserved and faded for the card alone and the
+     strip covered the tail of the transcript instead of moving it up. */
   const boxes = [...dock.children, ...dock.querySelectorAll('.dock-in > *, .sheets > *')]
   boxes.forEach((n) => {
     const r = n.getBoundingClientRect()
@@ -593,6 +601,28 @@ export function setLiveAnchor(ms: number): void {
 }
 
 export const liveMs = (): number => (liveT0 ? Date.now() - liveT0 : 0)
+
+/* The tasks store's live count, pushed in from the page's wiring
+   (app/install.ts) on every change and on a session reset. One-directional:
+   the composer never imports the tasks domain, and the two graphs stay out
+   of each other's closure. */
+export function setSubagentRuns(n: number): void {
+  if (get().subagentRuns === n) return
+  set({ subagentRuns: n })
+}
+
+/* Whether delegated work is still running after the host's turn ended. The
+   host has said everything it is going to say, but Raven is not done: the
+   transcript tail keeps one row saying what the reader is waiting on. Gated on
+   the turn being idle as well -- a host turn that is still streaming shows its
+   own row, never this one. */
+export const waitingForSubagents = (): boolean => !turn.busy() && get().subagentRuns > 0
+
+/* Whether the transcript-tail host draws anything at all: the live row while
+   the host works, the waiting row once only its sub-agents are left. One
+   predicate for both readers (the component and the host that mounts it), so
+   the row can never be attached and empty or detached and alive. */
+export const liveVisible = (): boolean => get().live || waitingForSubagents()
 
 export function drawTurnLive(): void {
   if (!turn.busy()) {
@@ -870,7 +900,14 @@ export function runSlash(x: SlashCmd | undefined): void {
   if (!x) return
   closeSlash()
   const ta = field()
-  if (ta) ta.value = ''
+  if (ta) {
+    /* The TUI records the command line like any other submitted text; a
+       recalled slash command is still a thing the reader typed. Record the
+       command that ran, not the prefix in the field: "/c" selected down to
+       gui.compress executes "/compress", and history must replay that. */
+    history.append(slashCmd(x))
+    ta.value = ''
+  }
   fitField()
   dropOwnedDraft()
   goPaint()
@@ -898,6 +935,9 @@ export function fireSend(): void {
     transcriptNote(t('gui.att.pending'), t('gui.att.pending_body', { n: pending }))
     return
   }
+  /* What the reader typed, not the generated "Files for you" block below:
+     recalling an attachment-only message should not replay a file note. */
+  history.append(v)
   let text = v
   const staged = takeAtts()
   if (staged.length) {
@@ -965,9 +1005,30 @@ export function fieldInput(): void {
   goPaint()
   const ta = field()
   const v = ta ? ta.value : ''
+  /* A recalled entry stops being navigation state the moment it is edited;
+     the edited text becomes the draft `down` past the newest entry restores. */
+  history.detachEdited(v)
   if (v.startsWith('/') && !v.includes(' ')) drawSlash(v)
   else closeSlash()
   touchDraft()
+}
+
+/* A history recall writes the field directly: it is uncontrolled, so a store
+   write would repaint the box mid-keystroke. The caret lands at the end like
+   the TUI's `setInput`, which is also what makes an arrow walk a recalled
+   multi-line entry line by line before leaving it. */
+function writeHistory(value: string): void {
+  const ta = field()
+  if (!ta) return
+  ta.value = value
+  ta.setSelectionRange(value.length, value.length)
+  fitField()
+  goPaint()
+  /* A recall bypasses fieldInput, so the palette would not reopen on its own.
+     A recalled slash command must reopen it: otherwise Enter falls through to
+     fireSend and sends "/clear" to the model as prompt text. */
+  if (value.startsWith('/') && !value.includes(' ')) drawSlash(value)
+  else closeSlash()
 }
 
 export function fieldKeydown(e: KeyboardEvent): void {
@@ -999,6 +1060,27 @@ export function fieldKeydown(e: KeyboardEvent): void {
       return
     }
   }
+  /* History comes after the slash menu and before Enter, and only for a plain
+     arrow: Shift is selecting text, Ctrl/Alt are the platform's own caret
+     moves, and a selection is never navigation state. */
+  if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    const ta = field()
+    if (ta && get().editing === null && ta.selectionStart === ta.selectionEnd) {
+      const caret = ta.selectionStart
+      const up = e.key === 'ArrowUp'
+      /* The logical line, not the visual one: a long line the textarea wrapped
+         still counts as one line, as it does in the TUI. */
+      const edge = up ? !ta.value.slice(0, caret).includes('\n') : !ta.value.slice(caret).includes('\n')
+      if (edge) {
+        const next = history.navigate(up ? -1 : 1, ta.value)
+        if (next !== null) {
+          e.preventDefault()
+          writeHistory(next)
+          return
+        }
+      }
+    }
+  }
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault()
     fireSend()
@@ -1016,5 +1098,6 @@ export function _resetForTests(): void {
   manualHeight = null
   jumpReset()
   trays.clear()
+  history._resetForTests()
   store.set({ ...initial })
 }

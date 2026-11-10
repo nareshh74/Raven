@@ -162,16 +162,17 @@ _Avoid_: "minimap" -- it marks turns, not a scaled copy of the transcript.
 The chat column's second view: the conversation's trace entries as an agent
 waterfall, in place of the transcript, drawn by `features/trajectory/` into
 `#trajHost` -- the box `src/chrome/ChatTop.tsx` renders beside `#scroll` and
-hands over empty. While it is up the composer card, the task strip and the
-desk step aside: `ChatTop.tsx` sets `data-traj` on the document and the
-stylesheet hides them under it. The sheet rack stays, so an approval, confirm
+hands over empty. While it is up the composer card and the desk step aside:
+`ChatTop.tsx` sets `data-traj` on the document and the stylesheet hides them
+under it. The sheet rack stays, so an approval, confirm
 or clarify sheet the open conversation raises is still in front of the reader,
 who would otherwise answer one they cannot see with the Escape that closes the
 details pane.
 Switching to it parks the scroller (`#scroll[data-parked]`: out of the flow,
 hidden, its size and scroll position kept) rather than unmounting it, so the
 transcript goes on streaming underneath and comes back exactly where it was.
-The header's toggle (`#trajBtn`) appears only when the gateway announced
+The header's view switch (`#chatViewBtn` and `#trajBtn`, the first control of its
+capsule) appears only when the gateway announced
 `trajectory-v1` (every gateway does while its trajectory policy is on, which is the default), `trajectory.state` says the view is on, a conversation is open
 and that conversation is not in its empty state (`state/session/conversation.ts`'s
 flag); the store's `available` is that one condition.
@@ -530,7 +531,8 @@ brought its own options, the sheet is a form the reader steps through -- back
 as well as forward, multi-select where the tool allows it -- and one Submit
 reports the lot. Filed under the session it was raised in and mounted only
 while that session is open -- see Sheet rack. A delegated graph used to
-dock here too and no longer does -- see Task strip.
+dock here too and no longer does; its live state reads at the transcript
+tail -- see Delegated-work tail row.
 _Avoid_: "dialog" for this -- a dialog is the settings or channel one, which is
 not docked and is not about a turn.
 
@@ -565,8 +567,8 @@ layer is open.
 **Export Wizard**:
 The dialog `#exportVeil` holds (`src/App.tsx` renders the veil, the box and the
 empty `#exportBody`), drawn by `features/export/` and opened from the header's
-conversation menu (`#moreBtn` in `src/chrome/ChatTop.tsx`, the corner slot,
-with the desk launcher one slot in over `#wsBtn`). A flow is a sequence of
+conversation menu (`#moreBtn` in `src/chrome/ChatTop.tsx`, the last control of
+the header's capsule, after the desk's chip). A flow is a sequence of
 pages: the export is the turn picker, then the export page; the bug report
 (offered while the handshake carries `bugreport-v1`) is the picker, the
 problem, the decisions and the upload. The picker drops out when the
@@ -608,7 +610,9 @@ Opened, one is read-only. The session registry sets `.chat[data-readonly]`
 (`state/session/conversation.ts`'s `readOnly`) as a switch begins, before
 `session.resume` answers, from the key's own prefix (`lib/imported.ts`); the
 stylesheet then takes away the composer dock, the workdir tag and the
-conversation menu (its slot kept), and the name stops being a rename control.
+conversation menu -- which leaves the capsule, closing it up around the chip
+and moving the anchored palette's notch to 11.5px from the palette's right
+edge -- and the name stops being a rename control.
 Sending, branching, the header editor and exporting refuse in their own code
 too. What the package does not carry degrades quietly instead of failing: a
 graph card reads no run record and shows no node count, an agent card asks
@@ -680,16 +684,15 @@ the reader typed into one lives in `src/state/sheetDrafts.ts` rather than in the
 input; a sheet re-added with a new view keeps its id and its place, so a repaint
 is a repaint and not a remount.
 
-**Task strip**:
-`TaskRuns` in `src/features/tasks/TasksPage.tsx`, rendered by
-`src/chrome/Dock.tsx` directly below the Sheet rack -- one chip saying how many
-tasks are running, their names as its hover title. It is a reminder that
-delegated work is under way, whether spawned or dispatched as a graph, not a
-list of it: the chip opens the Desk's tasks tab, whose rows name each run and
-open its pane, which is where the graph itself is drawn and panned. Nothing
-about a run docks in the rack: a graph there was the whole of
-itself between the transcript and the box you type in, for as long as the run
-lasted.
+**Delegated-work tail row**:
+`TurnLive` in `src/features/composer/ComposerPage.tsx`, mounted by
+`src/features/composer/mount.tsx` at the tail of `#stage`. While the host turn
+runs it carries the working glyph, the rotating verb and the clock; once the
+host has finished and a spawn or graph is still live it becomes one
+"waiting for subagents" row with the same glyph. The count is pushed into the
+composer store by `src/app/install.ts` from the tasks store, so the two
+domains keep their own graphs and no chip sits above the composer. The Desk's
+tasks tab remains the list of runs and where each pane is opened.
 _Avoid_: "dag sheet" -- there is no longer one. The run's durable record in the
 conversation is the trail's delegation card
 (`src/features/transcript/store.ts`'s `dagFeed`); `src/features/dag/mount.ts`

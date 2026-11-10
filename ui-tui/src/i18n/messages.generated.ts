@@ -423,7 +423,7 @@ export const UI_TEXT: Record<Locale, Record<string, string>> = {
     'gui.agent.kind_cli': 'Command line',
     'gui.agent.kind_openai': 'OpenAI',
     'gui.agent.not_installed': 'Not installed',
-    'gui.agent.unauthorized': 'Unauthorized',
+    'gui.agent.unauthorized': 'Sign-in needed',
     'gui.agent.none': 'Nothing connected yet.',
     'gui.agent.none_avail': 'Nothing left to connect.',
     'gui.agent.none_missing': 'Everything is installed.',
@@ -913,6 +913,7 @@ export const UI_TEXT: Record<Locale, Record<string, string>> = {
     'gui.job.what': 'Instruction',
     'gui.job.what_ph': 'What to send Raven when it fires - write it the way you would say it',
     'gui.live.busy': 'Working · {t}',
+    'gui.live.waiting_subagents': 'waiting for subagents',
     'gui.mem.down': 'Long-term memory is not being written; nothing from here on will be remembered.',
     'gui.mem.cloud_bad_key': 'That key was rejected. Check it and try again.',
     'gui.mem.cloud_change': 'Change key',
@@ -1496,6 +1497,7 @@ export const UI_TEXT: Record<Locale, Record<string, string>> = {
     'gui.ws.file_rendered': 'Rendered',
     'gui.ws.file_source': 'Source',
     'gui.ws.unseen_tab': '{n} new',
+    'gui.ws.needs_you_n': 'Needs you · {n}',
     'gui.ws.agents_working': 'Subagents working',
     'gui.ws.deliverables': 'Deliverables',
     'gui.ws.dlv_none': 'Nothing produced yet',
@@ -1742,12 +1744,10 @@ export const UI_TEXT: Record<Locale, Record<string, string>> = {
     'gui.agent.hd_on_test_bad': 'Connected · test failed',
     'gui.agent.probe_raw': 'What the check found',
     'gui.agent.hd_missing_by': 'Not installed · {by}',
-    'gui.agent.fix_sign_in':
-      'Sign in to {agent} first. Run this command in a terminal and sign in when it opens your browser, then press {button}:',
+    'gui.agent.fix_sign_in': 'Run the command below to sign in, then press {button}.',
     'gui.agent.fix_sign_in_bare': 'Sign in to {agent} first, then press {button}.',
-    'gui.agent.fix_setup':
-      '{agent} has no model provider it can use yet. Run this command in a terminal and follow its prompts to choose one, then press {button}:',
-    'gui.agent.fix_api_key': '{agent} could not use its API key. Change it to a valid key, then press {button}.',
+    'gui.agent.fix_setup': 'Run the command below to choose a provider, then press {button}.',
+    'gui.agent.fix_api_key': 'Enter a valid key, then press {button}.',
     'gui.agent.fix_raw': 'Original error',
     'gui.agent.ask_raven': 'Hand it to Raven →',
     'gui.agent.ask_connect':
@@ -1762,57 +1762,42 @@ export const UI_TEXT: Record<Locale, Record<string, string>> = {
     'gui.agent.warn_lead': 'What the check found is below; once that is fixed, press {button}.',
     'gui.agent.warn_lead_bare': 'What the check found is below.',
     'gui.agent.fix_download':
-      '{agent} could not be downloaded. Its first connect downloads it, so check the network, the npm registry or the proxy, then press {button}. On a slow network, download it first by running this command in a terminal (once it is downloaded it waits for input; press Ctrl-C to leave), then press {button}:',
+      'It needs to be downloaded on first connect. Check your network or proxy, then press {button}; on a slow network, run the command below first (press Ctrl-C when it finishes downloading).',
     'gui.agent.fix_download_bare':
-      "{agent} could not be downloaded. Its first connect downloads it, so check the network, the npm registry or the proxy, then press {button}. On a slow network, download it first by running this agent's launch command once in a terminal (once it is downloaded it waits for input; press Ctrl-C to leave), then press {button}.",
-    'gui.agent.fix_setup_then':
-      '{agent} has no model provider it can use yet, or its API key was refused. Set one up in two steps, then press {button}:',
+      "It needs to be downloaded on first connect. Check your network or proxy, then press {button}; on a slow network, run this agent's launch command once in a terminal first (press Ctrl-C when it finishes downloading).",
+    'gui.agent.fix_setup_then': 'Set up a provider and key in the two steps below, then press {button}.',
     'gui.agent.fix_step_run': 'Run in a terminal:',
     'gui.agent.fix_step_type': 'Then type:',
-    'gui.agent.fix_model':
-      "The model {agent} is set to use is not served by its provider (withdrawn from a free tier, say, a name it does not know, or a model the account's plan does not include). Set it up again as below and enter a model the provider still serves at the model step, then press {button}:",
-    'gui.agent.fix_model_bare':
-      "The model {agent} is set to use is not served by its provider (withdrawn from a free tier, say, a name it does not know, or a model the account's plan does not include). Switch it to another model, then press {button}.",
-    'gui.agent.fix_billing':
-      "{agent}'s model provider refused the call because the account is out of credit. Add credit with the provider, or set it up again as below and enter a free or cheaper model at the model step, then press {button}:",
-    'gui.agent.fix_billing_bare':
-      "{agent}'s model provider refused the call because the account is out of credit. Add credit with the provider, or switch to another model, then press {button}.",
-    'gui.agent.fix_quota':
-      "{agent}'s model provider is rate-limiting it, or its quota is used up. Wait a while and press {button}, or set it up again as below and enter another model at the model step:",
-    'gui.agent.fix_quota_bare':
-      "{agent}'s model provider is rate-limiting it, or its quota is used up. Wait a while and press {button}, or switch it to another model.",
+    'gui.agent.fix_model': 'Pick another model in the steps below, then press {button}.',
+    'gui.agent.fix_model_bare': 'Switch it to another model, then press {button}.',
+    'gui.agent.fix_billing': 'Add credit with the provider, or switch models in the steps below, then press {button}.',
+    'gui.agent.fix_billing_bare': 'Add credit with the provider, or switch models, then press {button}.',
+    'gui.agent.fix_quota': 'Wait a bit, or switch models in the steps below, then press {button}.',
+    'gui.agent.fix_quota_bare': 'Wait a bit, or switch models, then press {button}.',
     'gui.agent.fix_network':
-      '{agent} could not reach its model provider. Check the network, the proxy and the address it is set to use, then press {button}. To see the exact cause, run this command in a terminal:',
-    'gui.agent.fix_network_bare':
-      '{agent} could not reach its model provider. Check the network, the proxy and the address it is set to use, then press {button}.',
-    'gui.agent.fix_silent':
-      '{agent} did not answer in time. That usually means its model provider keeps refusing it -- quota used up, rate-limited, an address it cannot reach, or an outage -- and it keeps retrying without saying so. Run this command in a terminal and it prints the reason within a few minutes; once that is fixed, press {button}:',
+      'Check your network, proxy and provider address, then press {button}. The command below prints the cause.',
+    'gui.agent.fix_network_bare': 'Check your network, proxy and provider address, then press {button}.',
+    'gui.agent.fix_silent': 'Run the command below to see why, then press {button}.',
     'gui.agent.fix_silent_bare':
-      '{agent} did not answer in time. That usually means its model provider keeps refusing it -- quota used up, rate-limited, an address it cannot reach, or an outage -- and it keeps retrying without saying so. Once that is fixed, press {button}.',
-    'gui.agent.fix_upgrade':
-      '{agent} is too old to be connected (or another program goes by its name): this version does not support ACP yet. Upgrade it by running this command in a terminal, then press {button}:',
-    'gui.agent.fix_upgrade_bare':
-      '{agent} is too old to be connected (or another program goes by its name): this version does not support ACP yet. Upgrade it to the latest release, then press {button}.',
-    'gui.agent.fix_exited':
-      '{agent} quit as soon as it started. The original error below has what it said on its way out; once that is fixed, press {button}.',
+      'It usually means its provider is refusing requests. Check the account and quota, then press {button}.',
+    'gui.agent.fix_upgrade': 'Run the command below to upgrade, then press {button}.',
+    'gui.agent.fix_upgrade_bare': 'Upgrade it to the latest release, then press {button}.',
+    'gui.agent.fix_exited': 'Expand the original error below to see why, then press {button}.',
     'gui.agent.fix_runtime':
-      '{agent} quit as soon as it started because the Node.js it runs on is too old: it needs Node.js {needs} or newer, and this machine started it with {found}. Upgrade Node.js by running this command in a terminal, then press {button}:',
+      'It needs Node.js {needs} or newer (this machine has {found}). Upgrade Node.js, then press {button}.',
     'gui.agent.fix_runtime_bare':
-      '{agent} quit as soon as it started because the Node.js it runs on is too old: it needs Node.js {needs} or newer, and this machine started it with {found}. Install Node.js {needs} or newer from nodejs.org, then press {button}.',
-    'gui.agent.fix_plan':
-      "{agent} is signed in, but the account's current plan does not include it. Open this page to get a plan that does, then press {button}:",
-    'gui.agent.fix_plan_bare':
-      "{agent} is signed in, but the account's current plan does not include it. Get a plan that does, then press {button}.",
-    'gui.agent.fix_config':
-      '{agent} cannot read its own config file. Run this command in a terminal to see where it is wrong; once it is fixed, press {button}:',
-    'gui.agent.fix_config_bare': '{agent} cannot read its own config file. Fix it, then press {button}.',
+      'It needs Node.js {needs} or newer (this machine has {found}). Install it from nodejs.org, then press {button}.',
+    'gui.agent.fix_plan': 'Get a plan that includes it, then press {button}.',
+    'gui.agent.fix_plan_bare': 'Get a plan that includes it, then press {button}.',
+    'gui.agent.fix_config': "Run the command below to see what's wrong, fix it, then press {button}.",
+    'gui.agent.fix_config_bare': 'Fix its config file, then press {button}.',
     'gui.agent.needs_node':
       '{agent} runs through npx, which comes with Node.js, and npx was not found on this machine. Install Node.js, then press {button}.',
     'gui.agent.bad_sign_in': 'Sign in to {agent} first',
     'gui.agent.bad_setup': '{agent} has no model provider yet',
     'gui.agent.bad_api_key': '{agent} could not use its API key',
-    'gui.agent.bad_download': '{agent} could not be downloaded',
-    'gui.agent.bad_model': 'The model {agent} uses is not available',
+    'gui.agent.bad_download': '{agent} download failed',
+    'gui.agent.bad_model': "{agent}'s model is not available",
     'gui.agent.bad_billing': "{agent}'s provider account is out of credit",
     'gui.agent.bad_quota': '{agent} is rate-limited or out of quota',
     'gui.agent.bad_network': '{agent} could not reach its model provider',
@@ -1820,11 +1805,11 @@ export const UI_TEXT: Record<Locale, Record<string, string>> = {
     'gui.agent.bad_upgrade': '{agent} is too old to connect',
     'gui.agent.bad_exited': '{agent} quit as soon as it started',
     'gui.agent.bad_runtime': "{agent}'s Node.js is too old",
-    'gui.agent.bad_plan': "The account's plan does not include {agent}",
+    'gui.agent.bad_plan': 'The current plan does not include {agent}',
     'gui.agent.bad_config': "{agent}'s config file is broken",
-    'gui.agent.bad_connect': '{agent} could not connect',
-    'gui.agent.bad_save': 'The change was not saved',
-    'gui.agent.bad_disconnect': '{agent} could not be disconnected',
+    'gui.agent.bad_connect': '{agent} connection failed',
+    'gui.agent.bad_save': 'Change not saved',
+    'gui.agent.bad_disconnect': '{agent} disconnect failed',
     'gui.agent.st_connect_bad': 'Could not connect',
     'gui.agent.st_save_bad': 'Not saved',
     'gui.agent.st_disconnect_bad': 'Not disconnected',
@@ -1852,9 +1837,8 @@ export const UI_TEXT: Record<Locale, Record<string, string>> = {
     'gui.agent.row_run_then': '{why}; run {command} in a terminal and type {then}, then press {button}',
     'gui.agent.row_run_diagnose': '{why}; run {command} in a terminal to see why, then press {button}',
     'gui.agent.row_open': '{why}; open {command} in a browser to get a plan, then press {button}',
-    'gui.agent.said_connect':
-      'It did not answer the test message; its own words are below. Once that is fixed, press {button}.',
-    'gui.agent.said_test': 'Its own words are below. Once that is fixed, press {button}.',
+    'gui.agent.said_connect': 'It did not answer the test. Its own words are below; fix that, then press {button}.',
+    'gui.agent.said_test': 'Its own words are below; fix that, then press {button}.',
     'gui.agent.said_save': 'The server refused the change; its words are below.',
     'gui.agent.said_disconnect':
       "The config could not be written; the server's words are below. Once that is fixed, press {button}.",
@@ -2055,6 +2039,8 @@ export const UI_TEXT: Record<Locale, Record<string, string>> = {
     'gui.confirm.cfg.why.channels.dingtalk.allow_from': 'widening it lets more people instruct Raven',
     'gui.confirm.cfg.why.channels.dingtalk.enabled':
       'turning a channel on lets whoever its allow list admits instruct Raven there',
+    'gui.confirm.cfg.why.channels.dingtalk.message_targets':
+      'widening it lets this process message more chats outside a user turn',
     'gui.confirm.cfg.why.channels.dingtalk.workspace': "moves where this channel's conversations read and write files",
     'gui.confirm.cfg.why.channels.discord.allow_from': 'widening it lets more people instruct Raven',
     'gui.confirm.cfg.why.channels.discord.enabled':
@@ -2062,6 +2048,8 @@ export const UI_TEXT: Record<Locale, Record<string, string>> = {
     'gui.confirm.cfg.why.channels.discord.gateway_url':
       "sends this channel's credentials and messages to the address given",
     'gui.confirm.cfg.why.channels.discord.group_policy': 'widening it lets more people instruct Raven',
+    'gui.confirm.cfg.why.channels.discord.message_targets':
+      'widening it lets this process message more chats outside a user turn',
     'gui.confirm.cfg.why.channels.discord.workspace': "moves where this channel's conversations read and write files",
     'gui.confirm.cfg.why.channels.email.allow_from': 'widening it lets more people instruct Raven',
     'gui.confirm.cfg.why.channels.email.auto_reply_enabled': 'lets Raven send mail on its own',
@@ -2072,6 +2060,8 @@ export const UI_TEXT: Record<Locale, Record<string, string>> = {
       "sends this channel's credentials and messages to the address given",
     'gui.confirm.cfg.why.channels.email.imap_use_ssl':
       "turning it off sends this channel's credentials or messages unencrypted",
+    'gui.confirm.cfg.why.channels.email.message_targets':
+      'widening it lets this process message more chats outside a user turn',
     'gui.confirm.cfg.why.channels.email.smtp_host':
       "sends this channel's credentials and messages to the address given",
     'gui.confirm.cfg.why.channels.email.smtp_use_ssl':
@@ -2083,6 +2073,8 @@ export const UI_TEXT: Record<Locale, Record<string, string>> = {
     'gui.confirm.cfg.why.channels.feishu.enabled':
       'turning a channel on lets whoever its allow list admits instruct Raven there',
     'gui.confirm.cfg.why.channels.feishu.group_policy': 'widening it lets more people instruct Raven',
+    'gui.confirm.cfg.why.channels.feishu.message_targets':
+      'widening it lets this process message more chats outside a user turn',
     'gui.confirm.cfg.why.channels.feishu.workspace': "moves where this channel's conversations read and write files",
     'gui.confirm.cfg.why.channels.matrix.allow_from': 'widening it lets more people instruct Raven',
     'gui.confirm.cfg.why.channels.matrix.allow_room_mentions': 'widening it lets more people instruct Raven',
@@ -2094,6 +2086,8 @@ export const UI_TEXT: Record<Locale, Record<string, string>> = {
     'gui.confirm.cfg.why.channels.matrix.group_policy': 'widening it lets more people instruct Raven',
     'gui.confirm.cfg.why.channels.matrix.homeserver':
       "sends this channel's credentials and messages to the address given",
+    'gui.confirm.cfg.why.channels.matrix.message_targets':
+      'widening it lets this process message more chats outside a user turn',
     'gui.confirm.cfg.why.channels.matrix.workspace': "moves where this channel's conversations read and write files",
     'gui.confirm.cfg.why.channels.mochat.allow_from': 'widening it lets more people instruct Raven',
     'gui.confirm.cfg.why.channels.mochat.base_url':
@@ -2102,6 +2096,8 @@ export const UI_TEXT: Record<Locale, Record<string, string>> = {
       'turning a channel on lets whoever its allow list admits instruct Raven there',
     'gui.confirm.cfg.why.channels.mochat.groups': 'widening it lets more people instruct Raven',
     'gui.confirm.cfg.why.channels.mochat.mention.require_in_groups': 'widening it lets more people instruct Raven',
+    'gui.confirm.cfg.why.channels.mochat.message_targets':
+      'widening it lets this process message more chats outside a user turn',
     'gui.confirm.cfg.why.channels.mochat.panels': 'widening it lets more people instruct Raven',
     'gui.confirm.cfg.why.channels.mochat.sessions': 'widening it lets more people instruct Raven',
     'gui.confirm.cfg.why.channels.mochat.socket_url':
@@ -2110,6 +2106,8 @@ export const UI_TEXT: Record<Locale, Record<string, string>> = {
     'gui.confirm.cfg.why.channels.qq.allow_from': 'widening it lets more people instruct Raven',
     'gui.confirm.cfg.why.channels.qq.enabled':
       'turning a channel on lets whoever its allow list admits instruct Raven there',
+    'gui.confirm.cfg.why.channels.qq.message_targets':
+      'widening it lets this process message more chats outside a user turn',
     'gui.confirm.cfg.why.channels.qq.workspace': "moves where this channel's conversations read and write files",
     'gui.confirm.cfg.why.channels.slack.allow_from': 'widening it lets more people instruct Raven',
     'gui.confirm.cfg.why.channels.slack.dm.allow_from': 'widening it lets more people instruct Raven',
@@ -2119,17 +2117,23 @@ export const UI_TEXT: Record<Locale, Record<string, string>> = {
       'turning a channel on lets whoever its allow list admits instruct Raven there',
     'gui.confirm.cfg.why.channels.slack.group_allow_from': 'widening it lets more people instruct Raven',
     'gui.confirm.cfg.why.channels.slack.group_policy': 'widening it lets more people instruct Raven',
+    'gui.confirm.cfg.why.channels.slack.message_targets':
+      'widening it lets this process message more chats outside a user turn',
     'gui.confirm.cfg.why.channels.slack.user_token_read_only': 'turning it off lets Raven act as you on Slack',
     'gui.confirm.cfg.why.channels.slack.workspace': "moves where this channel's conversations read and write files",
     'gui.confirm.cfg.why.channels.telegram.allow_from': 'widening it lets more people instruct Raven',
     'gui.confirm.cfg.why.channels.telegram.enabled':
       'turning a channel on lets whoever its allow list admits instruct Raven there',
     'gui.confirm.cfg.why.channels.telegram.group_policy': 'widening it lets more people instruct Raven',
+    'gui.confirm.cfg.why.channels.telegram.message_targets':
+      'widening it lets this process message more chats outside a user turn',
     'gui.confirm.cfg.why.channels.telegram.proxy': "sends this channel's credentials and messages to the address given",
     'gui.confirm.cfg.why.channels.telegram.workspace': "moves where this channel's conversations read and write files",
     'gui.confirm.cfg.why.channels.wecom.allow_from': 'widening it lets more people instruct Raven',
     'gui.confirm.cfg.why.channels.wecom.enabled':
       'turning a channel on lets whoever its allow list admits instruct Raven there',
+    'gui.confirm.cfg.why.channels.wecom.message_targets':
+      'widening it lets this process message more chats outside a user turn',
     'gui.confirm.cfg.why.channels.wecom.workspace': "moves where this channel's conversations read and write files",
     'gui.confirm.cfg.why.channels.weixin.allow_from': 'widening it lets more people instruct Raven',
     'gui.confirm.cfg.why.channels.weixin.base_url':
@@ -2138,6 +2142,8 @@ export const UI_TEXT: Record<Locale, Record<string, string>> = {
       "sends this channel's credentials and messages to the address given",
     'gui.confirm.cfg.why.channels.weixin.enabled':
       'turning a channel on lets whoever its allow list admits instruct Raven there',
+    'gui.confirm.cfg.why.channels.weixin.message_targets':
+      'widening it lets this process message more chats outside a user turn',
     'gui.confirm.cfg.why.channels.weixin.state_dir':
       'moves where this channel keeps its login, which decides whose account it runs as',
     'gui.confirm.cfg.why.channels.weixin.workspace': "moves where this channel's conversations read and write files",
@@ -2147,6 +2153,8 @@ export const UI_TEXT: Record<Locale, Record<string, string>> = {
     'gui.confirm.cfg.why.channels.whatsapp.enabled':
       'turning a channel on lets whoever its allow list admits instruct Raven there',
     'gui.confirm.cfg.why.channels.whatsapp.group_policy': 'widening it lets more people instruct Raven',
+    'gui.confirm.cfg.why.channels.whatsapp.message_targets':
+      'widening it lets this process message more chats outside a user turn',
     'gui.confirm.cfg.why.channels.whatsapp.workspace': "moves where this channel's conversations read and write files",
     'gui.confirm.cfg.why.embedding': 'a different embedding model invalidates every vector already stored',
     'gui.confirm.cfg.why.permissions.judgeModel': 'picks the model that decides which calls run without asking you',
@@ -2409,7 +2417,6 @@ export const UI_TEXT: Record<Locale, Record<string, string>> = {
     'gui.tasks.board.move_on_clear': "Don't move this task on",
     'gui.tasks.board.answer_head': 'On "{title}":',
     'gui.tasks.board.answer_slot': 'Answer: ',
-    'gui.tasks.board.running': '{n} subagents running',
     'gui.tasks.board.dag': 'DAG {done}/{total}',
     'gui.tasks.files_n': '{n} files changed',
     'gui.tasks.files_more': 'Show {n} more files',
@@ -2466,6 +2473,7 @@ export const UI_TEXT: Record<Locale, Record<string, string>> = {
     'gui.settings.about.version': 'Version',
     'gui.settings.about.version_unknown': 'Unknown',
     'gui.settings.about.update': 'Update',
+    'gui.settings.about.github': 'GitHub',
     'gui.settings.about.check': 'Check for updates',
     'gui.settings.about.checking': 'Checking',
     'gui.settings.about.latest': 'Up to date',
@@ -2760,7 +2768,6 @@ export const UI_TEXT: Record<Locale, Record<string, string>> = {
     'gui.tasks.step_skipped': '{n} not dispatched',
     'gui.tasks.step_not_executed': '{n} not executed',
     'gui.tasks.step_carried': '{n} carried on',
-    'gui.tasks.running_n': '{n} running',
     'gui.tasks.st_completed': 'Completed',
     'gui.tasks.st_failed': 'Failed',
     'gui.tasks.st_interrupted': 'Interrupted',
@@ -4032,7 +4039,7 @@ export const UI_TEXT: Record<Locale, Record<string, string>> = {
     'gui.agent.kind_cli': '命令行',
     'gui.agent.kind_openai': 'OpenAI',
     'gui.agent.not_installed': '未安装',
-    'gui.agent.unauthorized': '未授权',
+    'gui.agent.unauthorized': '需要登录',
     'gui.agent.none': '还没有连接任何智能体。',
     'gui.agent.none_avail': '没有待接入的智能体了。',
     'gui.agent.none_missing': '都已装好。',
@@ -4514,6 +4521,7 @@ export const UI_TEXT: Record<Locale, Record<string, string>> = {
     'gui.job.what': '指令',
     'gui.job.what_ph': '到点发给 Raven 的话，像平时对话一样写',
     'gui.live.busy': '输出中 · {t}',
+    'gui.live.waiting_subagents': '等待子智能体返回',
     'gui.mem.down': '长期记忆当前写不进去，这段时间的对话不会被记住。',
     'gui.mem.cloud_bad_key': '这个 Key 没有通过校验，请检查后重试。',
     'gui.mem.cloud_change': '更换 Key',
@@ -5088,6 +5096,7 @@ export const UI_TEXT: Record<Locale, Record<string, string>> = {
     'gui.ws.file_rendered': '渲染',
     'gui.ws.file_source': '源码',
     'gui.ws.unseen_tab': '{n} 项新的',
+    'gui.ws.needs_you_n': '需要你回答 · {n}',
     'gui.ws.agents_working': '子智能体处理中',
     'gui.ws.deliverables': '产物',
     'gui.ws.dlv_none': '还没有产物',
@@ -5324,11 +5333,10 @@ export const UI_TEXT: Record<Locale, Record<string, string>> = {
     'gui.agent.hd_on_test_bad': '已接入 · 测试没通过',
     'gui.agent.probe_raw': '检查结果',
     'gui.agent.hd_missing_by': '本机未安装 · {by}',
-    'gui.agent.fix_sign_in': '需要先登录 {agent}。在终端运行下面这条命令，按提示在浏览器里登录，完成后点「{button}」：',
+    'gui.agent.fix_sign_in': '运行下面的命令完成登录，然后点「{button}」。',
     'gui.agent.fix_sign_in_bare': '需要先登录 {agent}，登录后点「{button}」。',
-    'gui.agent.fix_setup':
-      '{agent} 还没有可用的模型服务商。在终端运行下面这条命令，按提示选择服务商，完成后点「{button}」：',
-    'gui.agent.fix_api_key': '{agent} 的 API key 不可用，换一个有效的 key 后点「{button}」。',
+    'gui.agent.fix_setup': '运行下面的命令选一个模型服务商，然后点「{button}」。',
+    'gui.agent.fix_api_key': '换一个有效的 key，然后点「{button}」。',
     'gui.agent.fix_raw': '原始报错',
     'gui.agent.ask_raven': '交给 Raven →',
     'gui.agent.ask_connect':
@@ -5343,56 +5351,39 @@ export const UI_TEXT: Record<Locale, Record<string, string>> = {
     'gui.agent.warn_lead': '检查结果在下面，处理好后点「{button}」。',
     'gui.agent.warn_lead_bare': '检查结果在下面。',
     'gui.agent.fix_download':
-      '{agent} 没能下载下来。第一次接入时要联网下载它，请检查网络、npm 源或代理设置，然后点「{button}」。网络慢的话，也可以先在终端运行下面这条命令把它下载好（下载完会停住等待输入，按 Ctrl-C 退出即可），再点「{button}」：',
+      '首次接入需要先下载它。检查网络或代理后点「{button}」；网络慢的话，先运行下面的命令下载（下载完按 Ctrl-C 退出）。',
     'gui.agent.fix_download_bare':
-      '{agent} 没能下载下来。第一次接入时要联网下载它，请检查网络、npm 源或代理设置，然后点「{button}」。网络慢的话，也可以先在终端运行一次这个智能体的启动命令把它下载好（下载完会停住等待输入，按 Ctrl-C 退出即可），再点「{button}」。',
-    'gui.agent.fix_setup_then':
-      '{agent} 还没有可用的模型服务商，或者 API key 不对。按下面两步配好，然后点「{button}」：',
+      '首次接入需要先下载它。检查网络或代理后点「{button}」；网络慢的话，先在终端运行一次它的启动命令（下载完按 Ctrl-C 退出）。',
+    'gui.agent.fix_setup_then': '按下面两步配好服务商和 key，然后点「{button}」。',
     'gui.agent.fix_step_run': '在终端运行：',
     'gui.agent.fix_step_type': '进入后输入：',
-    'gui.agent.fix_model':
-      '{agent} 现在用的模型，服务商那边不提供了（比如免费版下线了、模型名不对，或者账号的套餐不含这个模型）。按下面的步骤重新配置，在填模型的那一步换一个还能用的模型，然后点「{button}」：',
-    'gui.agent.fix_model_bare':
-      '{agent} 现在用的模型，服务商那边不提供了（比如免费版下线了、模型名不对，或者账号的套餐不含这个模型）。换一个模型后点「{button}」。',
-    'gui.agent.fix_billing':
-      '{agent} 的模型服务商拒绝了请求：账户余额不足。去服务商那里充值，或者按下面的步骤重新配置，在填模型的那一步换一个免费或更便宜的模型，然后点「{button}」：',
-    'gui.agent.fix_billing_bare':
-      '{agent} 的模型服务商拒绝了请求：账户余额不足。去服务商那里充值，或者换一个模型，然后点「{button}」。',
-    'gui.agent.fix_quota':
-      '{agent} 的模型服务商在限流，或者额度已经用完。等一会儿再点「{button}」，或者按下面的步骤重新配置，在填模型的那一步换一个模型：',
-    'gui.agent.fix_quota_bare':
-      '{agent} 的模型服务商在限流，或者额度已经用完。等一会儿再点「{button}」，或者换一个模型。',
-    'gui.agent.fix_network':
-      '{agent} 连不上它的模型服务商。检查网络、代理和它配置的服务地址，处理好后点「{button}」。想看具体原因，可以在终端运行这条命令：',
-    'gui.agent.fix_network_bare':
-      '{agent} 连不上它的模型服务商。检查网络、代理和它配置的服务地址，处理好后点「{button}」。',
-    'gui.agent.fix_silent':
-      '{agent} 没有在限定时间内回复。这通常是它的模型服务商一直在拒绝它（额度用完、被限流、地址连不上、服务商故障），它在后台反复重试、什么也不说。在终端运行下面这条命令，几分钟内会打印出原因，处理好后点「{button}」：',
-    'gui.agent.fix_silent_bare':
-      '{agent} 没有在限定时间内回复。这通常是它的模型服务商一直在拒绝它（额度用完、被限流、地址连不上、服务商故障），它在后台反复重试、什么也不说。处理好后点「{button}」。',
-    'gui.agent.fix_upgrade':
-      '{agent} 的版本太旧（或者同名的命令其实是别的程序），还不支持 ACP 接入。在终端运行下面这条命令升级到最新版，完成后点「{button}」：',
-    'gui.agent.fix_upgrade_bare':
-      '{agent} 的版本太旧（或者同名的命令其实是别的程序），还不支持 ACP 接入。升级到最新版后点「{button}」。',
-    'gui.agent.fix_exited':
-      '{agent} 一启动就退出了。展开下面的原始报错，能看到它退出前说了什么，处理好后点「{button}」。',
-    'gui.agent.fix_runtime':
-      '{agent} 一启动就退出了：启动它的 Node.js 版本太旧。它需要 Node.js {needs} 或更高版本，这台机器上用的是 {found}。在终端运行下面这条命令升级 Node.js，完成后点「{button}」：',
+    'gui.agent.fix_model': '在下面换一个模型，然后点「{button}」。',
+    'gui.agent.fix_model_bare': '换一个模型，然后点「{button}」。',
+    'gui.agent.fix_billing': '去服务商充值，或者在下面换一个模型，然后点「{button}」。',
+    'gui.agent.fix_billing_bare': '去服务商充值，或者换一个模型，然后点「{button}」。',
+    'gui.agent.fix_quota': '稍后再试，或者在下面换一个模型，然后点「{button}」。',
+    'gui.agent.fix_quota_bare': '稍后再试，或者换一个模型，然后点「{button}」。',
+    'gui.agent.fix_network': '检查网络、代理和服务地址，然后点「{button}」。下面的命令会打印具体原因。',
+    'gui.agent.fix_network_bare': '检查网络、代理和服务地址，然后点「{button}」。',
+    'gui.agent.fix_silent': '运行下面的命令查看原因，处理好后点「{button}」。',
+    'gui.agent.fix_silent_bare': '通常是服务商在拒绝请求。检查账号和额度后点「{button}」。',
+    'gui.agent.fix_upgrade': '运行下面的命令升级，然后点「{button}」。',
+    'gui.agent.fix_upgrade_bare': '升级到最新版后点「{button}」。',
+    'gui.agent.fix_exited': '展开下面的原始报错看看原因，处理好后点「{button}」。',
+    'gui.agent.fix_runtime': '它需要 Node.js {needs} 或更高版本，这台机器是 {found}。升级 Node.js 后点「{button}」。',
     'gui.agent.fix_runtime_bare':
-      '{agent} 一启动就退出了：启动它的 Node.js 版本太旧。它需要 Node.js {needs} 或更高版本，这台机器上用的是 {found}。去 nodejs.org 安装 Node.js {needs} 或更高版本，装好后点「{button}」。',
-    'gui.agent.fix_plan':
-      '{agent} 已经登录，但账号当前的套餐不包含它。打开下面的链接开通或升级套餐，然后点「{button}」：',
-    'gui.agent.fix_plan_bare': '{agent} 已经登录，但账号当前的套餐不包含它。开通或升级套餐后点「{button}」。',
-    'gui.agent.fix_config':
-      '{agent} 的配置文件有错，它读不出来。在终端运行下面这条命令，会指出出错的位置，改好后点「{button}」：',
-    'gui.agent.fix_config_bare': '{agent} 的配置文件有错，它读不出来。改好后点「{button}」。',
+      '它需要 Node.js {needs} 或更高版本，这台机器是 {found}。去 nodejs.org 安装后点「{button}」。',
+    'gui.agent.fix_plan': '打开下面的链接升级套餐，然后点「{button}」。',
+    'gui.agent.fix_plan_bare': '开通或升级套餐后点「{button}」。',
+    'gui.agent.fix_config': '运行下面的命令查看问题，改好后点「{button}」。',
+    'gui.agent.fix_config_bare': '改好它的配置文件后点「{button}」。',
     'gui.agent.needs_node':
       '{agent} 要通过 Node.js 自带的 npx 运行，这台机器上没找到 npx。先安装 Node.js，装好后点「{button}」。',
     'gui.agent.bad_sign_in': '需要先登录 {agent}',
     'gui.agent.bad_setup': '{agent} 还没选模型服务商',
     'gui.agent.bad_api_key': '{agent} 的 API key 不可用',
-    'gui.agent.bad_download': '{agent} 没能下载下来',
-    'gui.agent.bad_model': '{agent} 用的模型不可用',
+    'gui.agent.bad_download': '{agent} 下载失败',
+    'gui.agent.bad_model': '{agent} 的模型不可用',
     'gui.agent.bad_billing': '{agent} 的服务商余额不足',
     'gui.agent.bad_quota': '{agent} 被限流或额度用完',
     'gui.agent.bad_network': '{agent} 连不上模型服务商',
@@ -5400,11 +5391,11 @@ export const UI_TEXT: Record<Locale, Record<string, string>> = {
     'gui.agent.bad_upgrade': '{agent} 版本太旧',
     'gui.agent.bad_exited': '{agent} 一启动就退出了',
     'gui.agent.bad_runtime': '{agent} 的 Node.js 版本太旧',
-    'gui.agent.bad_plan': '账号套餐不含 {agent}',
+    'gui.agent.bad_plan': '当前套餐不含 {agent}',
     'gui.agent.bad_config': '{agent} 的配置文件有错',
-    'gui.agent.bad_connect': '{agent} 没接入成功',
-    'gui.agent.bad_save': '这项修改没保存成功',
-    'gui.agent.bad_disconnect': '{agent} 没能断开',
+    'gui.agent.bad_connect': '{agent} 接入失败',
+    'gui.agent.bad_save': '修改没保存',
+    'gui.agent.bad_disconnect': '{agent} 断开失败',
     'gui.agent.st_connect_bad': '接入失败',
     'gui.agent.st_save_bad': '没保存',
     'gui.agent.st_disconnect_bad': '断开失败',
@@ -5415,7 +5406,7 @@ export const UI_TEXT: Record<Locale, Record<string, string>> = {
     'gui.agent.why_download': '没能下载',
     'gui.agent.why_model': '模型不可用',
     'gui.agent.why_billing': '余额不足',
-    'gui.agent.why_quota': '被限流或额度用完',
+    'gui.agent.why_quota': '被限流或额度不足',
     'gui.agent.why_network': '连不上服务商',
     'gui.agent.why_silent': '没有及时回复',
     'gui.agent.why_upgrade': '版本太旧',
@@ -5432,8 +5423,8 @@ export const UI_TEXT: Record<Locale, Record<string, string>> = {
     'gui.agent.row_run_then': '{why}，在终端运行 {command} 并输入 {then}，再点「{button}」',
     'gui.agent.row_run_diagnose': '{why}，在终端运行 {command} 查看原因，处理好后点「{button}」',
     'gui.agent.row_open': '{why}，在浏览器打开 {command} 开通套餐，再点「{button}」',
-    'gui.agent.said_connect': '它没有回应测试消息，原话如下。处理好后点「{button}」。',
-    'gui.agent.said_test': '原话如下。处理好后点「{button}」。',
+    'gui.agent.said_connect': '它没有回应测试。原话如下，处理好后点「{button}」。',
+    'gui.agent.said_test': '原话如下，处理好后点「{button}」。',
     'gui.agent.said_save': '服务端拒绝了这项修改，原话如下。',
     'gui.agent.said_disconnect': '配置没写成功，原话如下。处理好后点「{button}」。',
     'gui.agent.short_raven': '通用助手，什么活都能接一点',
@@ -5622,11 +5613,13 @@ export const UI_TEXT: Record<Locale, Record<string, string>> = {
     'gui.confirm.cfg.why.channels.*.enabled': '开启通道后，其允许名单放行的任何人都能在那里指挥 Raven',
     'gui.confirm.cfg.why.channels.dingtalk.allow_from': '放宽它会让更多人能指挥 Raven',
     'gui.confirm.cfg.why.channels.dingtalk.enabled': '开启通道后，其允许名单放行的任何人都能在那里指挥 Raven',
+    'gui.confirm.cfg.why.channels.dingtalk.message_targets': '放宽它会让这个进程在用户回合之外向更多聊天发消息',
     'gui.confirm.cfg.why.channels.dingtalk.workspace': '改变此通道的对话读写文件的位置',
     'gui.confirm.cfg.why.channels.discord.allow_from': '放宽它会让更多人能指挥 Raven',
     'gui.confirm.cfg.why.channels.discord.enabled': '开启通道后，其允许名单放行的任何人都能在那里指挥 Raven',
     'gui.confirm.cfg.why.channels.discord.gateway_url': '会把此通道的凭据和消息发往所给地址',
     'gui.confirm.cfg.why.channels.discord.group_policy': '放宽它会让更多人能指挥 Raven',
+    'gui.confirm.cfg.why.channels.discord.message_targets': '放宽它会让这个进程在用户回合之外向更多聊天发消息',
     'gui.confirm.cfg.why.channels.discord.workspace': '改变此通道的对话读写文件的位置',
     'gui.confirm.cfg.why.channels.email.allow_from': '放宽它会让更多人能指挥 Raven',
     'gui.confirm.cfg.why.channels.email.auto_reply_enabled': '允许 Raven 自行发送邮件',
@@ -5634,6 +5627,7 @@ export const UI_TEXT: Record<Locale, Record<string, string>> = {
     'gui.confirm.cfg.why.channels.email.enabled': '开启通道后，其允许名单放行的任何人都能在那里指挥 Raven',
     'gui.confirm.cfg.why.channels.email.imap_host': '会把此通道的凭据和消息发往所给地址',
     'gui.confirm.cfg.why.channels.email.imap_use_ssl': '关闭它会让此通道的凭据或消息以未加密方式发送',
+    'gui.confirm.cfg.why.channels.email.message_targets': '放宽它会让这个进程在用户回合之外向更多聊天发消息',
     'gui.confirm.cfg.why.channels.email.smtp_host': '会把此通道的凭据和消息发往所给地址',
     'gui.confirm.cfg.why.channels.email.smtp_use_ssl': '关闭它会让此通道的凭据或消息以未加密方式发送',
     'gui.confirm.cfg.why.channels.email.smtp_use_tls': '关闭它会让此通道的凭据或消息以未加密方式发送',
@@ -5641,6 +5635,7 @@ export const UI_TEXT: Record<Locale, Record<string, string>> = {
     'gui.confirm.cfg.why.channels.feishu.allow_from': '放宽它会让更多人能指挥 Raven',
     'gui.confirm.cfg.why.channels.feishu.enabled': '开启通道后，其允许名单放行的任何人都能在那里指挥 Raven',
     'gui.confirm.cfg.why.channels.feishu.group_policy': '放宽它会让更多人能指挥 Raven',
+    'gui.confirm.cfg.why.channels.feishu.message_targets': '放宽它会让这个进程在用户回合之外向更多聊天发消息',
     'gui.confirm.cfg.why.channels.feishu.workspace': '改变此通道的对话读写文件的位置',
     'gui.confirm.cfg.why.channels.matrix.allow_from': '放宽它会让更多人能指挥 Raven',
     'gui.confirm.cfg.why.channels.matrix.allow_room_mentions': '放宽它会让更多人能指挥 Raven',
@@ -5649,18 +5644,21 @@ export const UI_TEXT: Record<Locale, Record<string, string>> = {
     'gui.confirm.cfg.why.channels.matrix.group_allow_from': '放宽它会让更多人能指挥 Raven',
     'gui.confirm.cfg.why.channels.matrix.group_policy': '放宽它会让更多人能指挥 Raven',
     'gui.confirm.cfg.why.channels.matrix.homeserver': '会把此通道的凭据和消息发往所给地址',
+    'gui.confirm.cfg.why.channels.matrix.message_targets': '放宽它会让这个进程在用户回合之外向更多聊天发消息',
     'gui.confirm.cfg.why.channels.matrix.workspace': '改变此通道的对话读写文件的位置',
     'gui.confirm.cfg.why.channels.mochat.allow_from': '放宽它会让更多人能指挥 Raven',
     'gui.confirm.cfg.why.channels.mochat.base_url': '会把此通道的凭据和消息发往所给地址',
     'gui.confirm.cfg.why.channels.mochat.enabled': '开启通道后，其允许名单放行的任何人都能在那里指挥 Raven',
     'gui.confirm.cfg.why.channels.mochat.groups': '放宽它会让更多人能指挥 Raven',
     'gui.confirm.cfg.why.channels.mochat.mention.require_in_groups': '放宽它会让更多人能指挥 Raven',
+    'gui.confirm.cfg.why.channels.mochat.message_targets': '放宽它会让这个进程在用户回合之外向更多聊天发消息',
     'gui.confirm.cfg.why.channels.mochat.panels': '放宽它会让更多人能指挥 Raven',
     'gui.confirm.cfg.why.channels.mochat.sessions': '放宽它会让更多人能指挥 Raven',
     'gui.confirm.cfg.why.channels.mochat.socket_url': '会把此通道的凭据和消息发往所给地址',
     'gui.confirm.cfg.why.channels.mochat.workspace': '改变此通道的对话读写文件的位置',
     'gui.confirm.cfg.why.channels.qq.allow_from': '放宽它会让更多人能指挥 Raven',
     'gui.confirm.cfg.why.channels.qq.enabled': '开启通道后，其允许名单放行的任何人都能在那里指挥 Raven',
+    'gui.confirm.cfg.why.channels.qq.message_targets': '放宽它会让这个进程在用户回合之外向更多聊天发消息',
     'gui.confirm.cfg.why.channels.qq.workspace': '改变此通道的对话读写文件的位置',
     'gui.confirm.cfg.why.channels.slack.allow_from': '放宽它会让更多人能指挥 Raven',
     'gui.confirm.cfg.why.channels.slack.dm.allow_from': '放宽它会让更多人能指挥 Raven',
@@ -5669,26 +5667,31 @@ export const UI_TEXT: Record<Locale, Record<string, string>> = {
     'gui.confirm.cfg.why.channels.slack.enabled': '开启通道后，其允许名单放行的任何人都能在那里指挥 Raven',
     'gui.confirm.cfg.why.channels.slack.group_allow_from': '放宽它会让更多人能指挥 Raven',
     'gui.confirm.cfg.why.channels.slack.group_policy': '放宽它会让更多人能指挥 Raven',
+    'gui.confirm.cfg.why.channels.slack.message_targets': '放宽它会让这个进程在用户回合之外向更多聊天发消息',
     'gui.confirm.cfg.why.channels.slack.user_token_read_only': '关闭它会让 Raven 以你的身份在 Slack 上行事',
     'gui.confirm.cfg.why.channels.slack.workspace': '改变此通道的对话读写文件的位置',
     'gui.confirm.cfg.why.channels.telegram.allow_from': '放宽它会让更多人能指挥 Raven',
     'gui.confirm.cfg.why.channels.telegram.enabled': '开启通道后，其允许名单放行的任何人都能在那里指挥 Raven',
     'gui.confirm.cfg.why.channels.telegram.group_policy': '放宽它会让更多人能指挥 Raven',
+    'gui.confirm.cfg.why.channels.telegram.message_targets': '放宽它会让这个进程在用户回合之外向更多聊天发消息',
     'gui.confirm.cfg.why.channels.telegram.proxy': '会把此通道的凭据和消息发往所给地址',
     'gui.confirm.cfg.why.channels.telegram.workspace': '改变此通道的对话读写文件的位置',
     'gui.confirm.cfg.why.channels.wecom.allow_from': '放宽它会让更多人能指挥 Raven',
     'gui.confirm.cfg.why.channels.wecom.enabled': '开启通道后，其允许名单放行的任何人都能在那里指挥 Raven',
+    'gui.confirm.cfg.why.channels.wecom.message_targets': '放宽它会让这个进程在用户回合之外向更多聊天发消息',
     'gui.confirm.cfg.why.channels.wecom.workspace': '改变此通道的对话读写文件的位置',
     'gui.confirm.cfg.why.channels.weixin.allow_from': '放宽它会让更多人能指挥 Raven',
     'gui.confirm.cfg.why.channels.weixin.base_url': '会把此通道的凭据和消息发往所给地址',
     'gui.confirm.cfg.why.channels.weixin.cdn_base_url': '会把此通道的凭据和消息发往所给地址',
     'gui.confirm.cfg.why.channels.weixin.enabled': '开启通道后，其允许名单放行的任何人都能在那里指挥 Raven',
+    'gui.confirm.cfg.why.channels.weixin.message_targets': '放宽它会让这个进程在用户回合之外向更多聊天发消息',
     'gui.confirm.cfg.why.channels.weixin.state_dir': '改变此通道登录信息的存放位置，这决定它以哪个账号的身份运行',
     'gui.confirm.cfg.why.channels.weixin.workspace': '改变此通道的对话读写文件的位置',
     'gui.confirm.cfg.why.channels.whatsapp.allow_from': '放宽它会让更多人能指挥 Raven',
     'gui.confirm.cfg.why.channels.whatsapp.bridge_url': '会把此通道的凭据和消息发往所给地址',
     'gui.confirm.cfg.why.channels.whatsapp.enabled': '开启通道后，其允许名单放行的任何人都能在那里指挥 Raven',
     'gui.confirm.cfg.why.channels.whatsapp.group_policy': '放宽它会让更多人能指挥 Raven',
+    'gui.confirm.cfg.why.channels.whatsapp.message_targets': '放宽它会让这个进程在用户回合之外向更多聊天发消息',
     'gui.confirm.cfg.why.channels.whatsapp.workspace': '改变此通道的对话读写文件的位置',
     'gui.confirm.cfg.why.embedding': '换用别的嵌入模型会让已存储的全部向量失效',
     'gui.confirm.cfg.why.permissions.judgeModel': '决定由哪个模型来判定哪些调用无需询问你即可执行',
@@ -5935,7 +5938,6 @@ export const UI_TEXT: Record<Locale, Record<string, string>> = {
     'gui.tasks.board.move_on_clear': '不推进这个任务',
     'gui.tasks.board.answer_head': '关于「{title}」：',
     'gui.tasks.board.answer_slot': '答：',
-    'gui.tasks.board.running': '{n} 个子智能体在跑',
     'gui.tasks.board.dag': 'DAG {done}/{total}',
     'gui.tasks.files_n': '{n} 个文件改动',
     'gui.tasks.files_more': '展开其余 {n} 个文件',
@@ -5992,6 +5994,7 @@ export const UI_TEXT: Record<Locale, Record<string, string>> = {
     'gui.settings.about.version': '版本',
     'gui.settings.about.version_unknown': '未知',
     'gui.settings.about.update': '更新',
+    'gui.settings.about.github': 'GitHub',
     'gui.settings.about.check': '检查更新',
     'gui.settings.about.checking': '检查中',
     'gui.settings.about.latest': '已是最新',
@@ -6276,7 +6279,6 @@ export const UI_TEXT: Record<Locale, Record<string, string>> = {
     'gui.tasks.step_skipped': '{n} 步没派',
     'gui.tasks.step_not_executed': '{n} 步未执行',
     'gui.tasks.step_carried': '{n} 步转入后续运行',
-    'gui.tasks.running_n': '{n} 个任务在跑',
     'gui.tasks.st_completed': '已完成',
     'gui.tasks.st_failed': '失败',
     'gui.tasks.st_interrupted': '中断',

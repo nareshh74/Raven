@@ -4512,9 +4512,9 @@ class TranscriptMessage(_Strict):
     replied_via_tool: bool | None = Field(
         default=None,
         description=(
-            "Set on one assistant entry of a turn whose reader got its reply from a tool: a message-tool send "
-            "that went out (the tool hands every send to the turn's own reader, whatever chat the call names) or a "
-            "file delivery. A send that failed does not set it. The entry "
+            "Set on one assistant entry of a turn whose reader got its reply from a tool: a same-target "
+            "message-tool send that went out (a cross-target send is queued for another surface and does not set "
+            "it) or a file delivery. A send that failed does not set it. The entry "
             "is the turn's last assistant entry with text or tool calls, not counting a notice the runtime files "
             "after the turn: the `silent` marker's entry when the turn ends on one, and otherwise, when its last "
             "reply had no text, the last entry that made a tool call, which need not be the call that sent the "
@@ -7027,6 +7027,23 @@ class InputDetectDropResult(_Strict):
     token_estimate: int | None = None
 
 
+class InputHistoryListParams(_Strict):
+    limit: int | None = Field(default=None, description="How many of the newest entries to return; capped at 1000.")
+
+
+class InputHistoryListResult(_Strict):
+    entries: list[str]
+
+
+class InputHistoryAppendParams(_Strict):
+    text: str
+
+
+class InputHistoryAppendResult(_Strict):
+    ok: bool
+    appended: bool = Field(..., description="False when the text was blank or repeated the newest entry.")
+
+
 class SessionInterruptParams(_Strict):
     session_id: str
 
@@ -7614,6 +7631,8 @@ METHOD_MODELS: dict[str, tuple[type[BaseModel], type[BaseModel]]] = {
     "delegation.status": (DelegationStatusParams, DelegationStatusResult),
     "delegation.pause": (DelegationPauseParams, DelegationPauseResult),
     "input.detect_drop": (InputDetectDropParams, InputDetectDropResult),
+    "input.history.list": (InputHistoryListParams, InputHistoryListResult),
+    "input.history.append": (InputHistoryAppendParams, InputHistoryAppendResult),
     "session.interrupt": (SessionInterruptParams, SessionInterruptResult),
     "shell.exec": (ShellExecParams, ShellExecResult),
     "skills.manage": (SkillsManageParams, SkillsManageResult),

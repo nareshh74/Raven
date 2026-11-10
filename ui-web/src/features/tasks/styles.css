@@ -11,44 +11,6 @@
  * LEGACY_LOCAL row is what carries that debt down.
  */
 
-/* The strip above the composer: one pill saying how many tasks are running,
-   which opens the desk's tasks tab -- the prototype's `.tasktags` and
-   `.runhint`. On the dock's axis (`--col`) rather than the card's, the way the
-   sheet rack is, and with no ground of its own: the pill sits on the page. */
-.tkruns {
-  display: flex;
-  max-width: var(--col);
-  margin: 0 auto 8px;
-  pointer-events: auto;
-}
-.tkrunhint {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 4px 10px 4px 9px;
-  border: 1px solid var(--line-soft);
-  border-radius: 999px;
-  background: var(--ink);
-  box-shadow: var(--elev);
-  font-size: 12px;
-  color: var(--muted);
-  transition: color .14s ease, border-color .14s ease, background .14s ease;
-}
-.tkrunhint:hover { color: var(--text); border-color: var(--line); background: var(--raised); }
-/* The running dot the tasks tab's rows carry (`.sarow.task[data-st="run"]
-   .dot`), so the pill and the list it opens breathe alike. Its own class
-   rather than the page-wide `.dot`: this pill has exactly one state. */
-.tkrundot {
-  flex: none;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--moss);
-  box-shadow: 0 0 0 3px color-mix(in oklab, var(--moss) 18%, transparent);
-  animation: pulse 1.8s ease-in-out infinite;
-}
-@media (prefers-reduced-motion: reduce) { .tkrundot { animation: none; } }
-
 /* The node card's three "there is nothing to show here" lines -- a step nobody
    started, one whose record this panel has not read, and one whose executor
    kept none. The same muted paragraph as `.tknote`, and named apart from it
@@ -682,8 +644,8 @@
    group, and the only box inside that group is the one this domain hands
    `DagGraph` through `renderNode` -- so the tabbing ring is drawn there. */
 .tkfork .nd:focus-visible .tkrun {
-  border-color: var(--amber);
-  outline: 1px solid var(--amber);
+  border-color: var(--warm);
+  outline: 1px solid var(--warm);
   /* Inward, like the ring above: at `2px` the whole outline sat outside the
      clip and tabbing to a node showed nothing at all. It stays an `outline`
      rather than becoming a third shadow because forced-colors mode keeps an
@@ -944,23 +906,48 @@
   transition: color .14s ease;
 }
 .tkless:hover { color: var(--text); }
-.tkless:focus-visible { outline: 1.5px solid var(--amber); outline-offset: 1px; }
+.tkless:focus-visible { outline: 1.5px solid var(--warm); outline-offset: 1px; }
 .tkless svg { transform: rotate(180deg); }
 
 /* ── the task board (BoardList.tsx) ───────────────────────────────────────
-   One card per Task Group on a quiet ground -- the Task Board page's own
-   language, so a group reads the same in both places. The card's head is the
-   button that opens its thread, and the thread opens inside the card. */
+   One card per Task Group, one layer on a quiet ground: no frame and no
+   shadow at rest, so the column reads as a stack of matters rather than boxes
+   inside boxes. The status pill leads the title's line, the summary follows,
+   and one line closes the card -- the meta, the counts, and Move on. The
+   card's head is the button that opens its thread, and the thread opens
+   inside the card. */
 /* Its own list, not the flat list's `.salist.tasks`, which packs rows tight:
    the cards need room between them. */
-.tkboard { display: flex; flex-direction: column; gap: 8px; padding: 10px; background: var(--surface); min-height: 100%; }
+.tkboard { display: flex; flex-direction: column; gap: 6px; padding: 8px; background: var(--surface); min-height: 100%; }
 .tkgcard {
-  border: 1px solid var(--line-soft);
-  border-radius: 12px;
-  background: var(--paper);
-  box-shadow: 0 1px 2px var(--ring-2);
+  --tk-card: var(--paper);
+  position: relative;
+  border-radius: 10px;
+  background: var(--tk-card);
+  transition: box-shadow .14s ease;
 }
-.tkgcard:hover { border-color: var(--line); }
+/* The edge is drawn inside and only under the pointer: at rest the step from
+   the ground to the card is the whole separation. */
+.tkgcard:hover { box-shadow: inset 0 0 0 1px var(--line); }
+/* Still going: a short sky line on the card's top edge, the sky the pill turns
+   in. It holds still, so a column of running work is not a column of motion. */
+.tkgcard[data-cat="running"]::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 12px;
+  width: 34%;
+  height: 2px;
+  border-radius: 0 0 2px 2px;
+  background: linear-gradient(90deg, transparent, var(--sky), transparent);
+  pointer-events: none;
+}
+/* Waiting on the reader: the one card that is framed, in the amber its Answer
+   wears. After the hover rule, so the frame holds under the pointer. */
+.tkgcard[data-cat="needs_you"] {
+  --tk-card: color-mix(in oklab, var(--amber) 4%, var(--paper));
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--amber) 40%, transparent);
+}
 /* The ring the page's keyboard focus draws belongs on the card, not on the
    head inside it, where it would cut the card in two. */
 .tkgroup:focus-visible { outline: none; }
@@ -969,18 +956,21 @@
   display: flex;
   flex-direction: column;
   width: 100%;
-  padding: 11px 12px 10px;
+  padding: 11px 12px 2px;
   border: 0;
-  border-radius: 12px;
+  border-radius: 10px;
   background: none;
   color: var(--text);
   font: inherit;
   text-align: left;
   cursor: pointer;
 }
-.tkghead { display: flex; align-items: center; gap: 8px; }
-.tkgmeta { margin-left: auto; flex: none; font-size: 11px; color: var(--faint); white-space: nowrap; }
-.tkgroup .nm { margin-top: 7px; font-size: 14px; font-weight: 600; line-height: 1.4; }
+.tkgmeta { flex: none; white-space: nowrap; }
+.tkgtitle { display: flex; align-items: flex-start; gap: 8px; }
+/* Level with the title's first line, however many lines the title wraps to:
+   the title wraps in its own column, never under the pill. */
+.tkgtitle .tkpill { flex: none; margin-top: 1px; }
+.tkgroup .nm { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 600; line-height: 1.45; }
 .tkgroup.tkdone .nm { color: var(--muted); font-weight: 500; }
 .tkgroup .st {
   display: -webkit-box;
@@ -1037,10 +1027,15 @@
 .tkaskbtn:hover { border-color: var(--faint); }
 .tkaskbtn[data-kind="answer"] { border-color: var(--amber); background: var(--amber); color: var(--ink-on-accent); }
 .tkaskbtn[data-kind="answer"]:hover { border-color: var(--amber-dp); background: var(--amber-dp); }
-/* The folded card's foot, under the head and outside it: the counters, and
-   Move on at the right. */
-.tkgfoot { display: flex; align-items: center; gap: 8px; margin: -2px 12px 10px; font-size: 11px; color: var(--faint); }
-.tkgfoot .tkmove { margin-left: auto; }
+/* The card's foot, under the head and outside it: the meta, the counters,
+   and Move on at the right. */
+.tkgfoot { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-height: 22px; margin: 4px 12px 9px; font-size: 11px; color: var(--faint); }
+/* Move on is the card's verb, and on every folded card it is there: plain
+   words at the line's right, in the line's own flow, never waiting for the
+   pointer. On a narrow card whose counts fill the line it wraps to the right
+   of a second one (scripts/gates/group-card-move-on-css.test.mjs). */
+.tkgfoot .tkmove { margin-left: auto; border-color: transparent; background: none; color: var(--text); font-weight: 500; }
+.tkgfoot .tkmove:hover { border-color: transparent; background: var(--raised); }
 /* Move on: a quiet button whose arrow says the next message goes on with the
    group -- in a folded card's foot, in an open thread's last row, and at the
    end of a Task Board page card or row. */

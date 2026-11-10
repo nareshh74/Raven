@@ -24,6 +24,13 @@ The bare `chat_id` value shown to and accepted from users (the channel prefix is
 stripped for display, re-prepended to form the session key). Presentation term; in
 code the value lives in the `chat_id` field and the composite is the `session_key`.
 
+**Telegram project link**:
+An opt-in mapping of one Telegram private chat and sender to an existing page
+session key (`gateway/linked_chat.py`). The page scheduler serializes both
+surfaces' turns; the source still determines where replies and questions go.
+It leaves both stored transcripts in place and does not broadcast background
+output. See [configuration and limits](docs/telegram-project-link.md).
+
 **Model binding**:
 A model id together with the provider whose credential serves it, as one value
 (`raven/providers/binding.py`). The pairing is the point: a model id alone does
@@ -1219,6 +1226,11 @@ Replaces the old `OutboundMessage`.
 _Avoid_: conflating Deliverable with lifecycle events (`TurnStarted`/`TurnFailed`/`TurnEnded`) —
 those are emitted by the Spine worker, not a runner.
 
+**RetryDeliveryError**:
+A transient outlet failure carrying a continuation for its unacknowledged work.
+The `DeliveryHub` retries that continuation under the original deliverable's retry budget;
+acknowledged parts need not be replayed. Defined in `raven/spine/delivery.py`.
+
 **AnswerlessTurnError**:
 The exception a runner raises to say the turn it ran ended with no answer and that its message is
 already the report a reader should see — the model call the loop gave up on, in the provider's words,
@@ -1660,10 +1672,17 @@ The window divided: one request's prompt by part — the system prompt, the tool
 schemas, the conversation, the memory and the skills
 (`raven/agent/window/parts.py`). An estimate of the request the loop sent, not
 a provider's count: the provider reports a prompt as one number and does not
-split it. The memory and the skills are the two segments the turn's scratch
-carried, which the assembler hands over by name so they can be measured apart.
-Carried on the wire as `context_parts` on a turn's usage, and absent until a
-turn has measured one.
+split it. The memory is the recalled segment, wherever it rides: the turn's
+scratch, or the system prompt when `context.cache.turn_scratch` is off. The
+skills are every byte the skill subsystem put in the prompt: the always-on
+digest in the system prompt, the routed segment beside the memory, the
+pull-mode scent menu in the user envelope, and the results of the skill tools
+(`find_skill`, `read_skill`, `use_skill`) — including one the model reached by
+forwarding through `tool_call`, whose message is named for the tool that
+produced it. A `SKILL.md` read through `read_file` or `exec` is not counted:
+the split follows what the skill subsystem wrote, not what a general-purpose
+tool happened to read. Carried on the wire as `context_parts` on a turn's
+usage, and absent until a turn has measured one.
 _Avoid_: "segments" for these — a Segment is a piece the context engine assembles
 the prompt from, not a share of the window.
 

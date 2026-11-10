@@ -1,6 +1,7 @@
 import { createRoot } from 'react-dom/client'
 
 import { AttTray, QueueList, SlashList, TurnLive } from './ComposerPage'
+import * as history from './history'
 import * as store from './store'
 import './styles.css'
 import { open as openTemplates } from './templates'
@@ -23,11 +24,12 @@ import type { Root } from 'react-dom/client'
 let roots: Root[] = []
 let liveHost: HTMLElement | null = null
 
-/* The live turn row rides the tail of #stage, which the transcript island owns
- * a lane host in and the session modules still wipe and park wholesale
+/* The tail row rides the end of #stage, which the transcript island owns a
+ * lane host in and the session modules still wipe and park wholesale
  * (state/session/registry.ts, state/session/runtime.ts). So it gets a host of
- * its own, one `display: contents` element appended after the
- * transcript's, and the host is only attached while a turn is alive -- the row
+ * its own, one `display: contents` element appended after the transcript's,
+ * and the host is only attached while the row has something to say: a live
+ * host turn, or delegated work still running after that turn ended. The row
  * used to be appended and removed the same way.
  *
  * Moved only when something new landed after it: re-inserting a node restarts
@@ -37,7 +39,7 @@ let liveHost: HTMLElement | null = null
 function syncLiveHost(): void {
   const host = liveHost
   if (!host) return
-  if (!store.get().live) {
+  if (!store.liveVisible()) {
     host.remove()
     return
   }
@@ -122,6 +124,14 @@ export function parkDraftNow(): void {
 
 export function dockLift(): void {
   store.dockLift()
+}
+
+/* The history is ambient -- one shared file, one read per page -- so it is
+   loaded beside the boot rather than per conversation. Called once the socket
+   has been asked to connect, where a call made during the handshake is held
+   until the open instead of failing as "not connected" (rpc/wsTransport.ts). */
+export function initHistory(): void {
+  void history.init()
 }
 
 export const liveAnchor = (): number => store.liveAnchor()

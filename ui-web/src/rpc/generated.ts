@@ -3,7 +3,7 @@
 // Source of truth: rpc-schema/openrpc.json (OpenRPC 1.2.6).
 // Drift check: `npm run gen:check` (CI runs this; a stale file fails the build).
 //
-// 259 methods, 147 component schemas.
+// 261 methods, 147 component schemas.
 
 /* eslint-disable */
 /**
@@ -266,7 +266,7 @@ export interface TranscriptMessage {
    */
   silent?: boolean;
   /**
-   * Set on one assistant entry of a turn whose reader got its reply from a tool: a message-tool send that went out (the tool hands every send to the turn's own reader, whatever chat the call names) or a file delivery. A send that failed does not set it. The entry is the turn's last assistant entry with text or tool calls, not counting a notice the runtime files after the turn: the `silent` marker's entry when the turn ends on one, and otherwise, when its last reply had no text, the last entry that made a tool call, which need not be the call that sent the message. Such a turn answered whatever it ends on, and is not a Silent Turn.
+   * Set on one assistant entry of a turn whose reader got its reply from a tool: a same-target message-tool send that went out (a cross-target send is queued for another surface and does not set it) or a file delivery. A send that failed does not set it. The entry is the turn's last assistant entry with text or tool calls, not counting a notice the runtime files after the turn: the `silent` marker's entry when the turn ends on one, and otherwise, when its last reply had no text, the last entry that made a tool call, which need not be the call that sent the message. Such a turn answered whatever it ends on, and is not a Silent Turn.
    */
   replied_via_tool?: boolean;
 }
@@ -6374,6 +6374,25 @@ export interface InputDetectDropResult {
   height?: number;
   token_estimate?: number;
 }
+export interface InputHistoryListParams {
+  /**
+   * How many of the newest entries to return; capped at 1000.
+   */
+  limit?: number;
+}
+export interface InputHistoryListResult {
+  entries: string[];
+}
+export interface InputHistoryAppendParams {
+  text: string;
+}
+export interface InputHistoryAppendResult {
+  ok: boolean;
+  /**
+   * False when the text was blank or repeated the newest entry.
+   */
+  appended: boolean;
+}
 export interface SessionInterruptParams {
   session_id: string;
 }
@@ -7172,6 +7191,8 @@ export interface RpcMethods {
   'delegation.status': { params: DelegationStatusParams; result: DelegationStatusResult };
   'delegation.pause': { params: DelegationPauseParams; result: DelegationPauseResult };
   'input.detect_drop': { params: InputDetectDropParams; result: InputDetectDropResult };
+  'input.history.list': { params: InputHistoryListParams; result: InputHistoryListResult };
+  'input.history.append': { params: InputHistoryAppendParams; result: InputHistoryAppendResult };
   'session.interrupt': { params: SessionInterruptParams; result: SessionInterruptResult };
   'shell.exec': { params: ShellExecParams; result: ShellExecResult };
   'skills.manage': { params: SkillsManageParams; result: SkillsManageResult };
@@ -7289,6 +7310,8 @@ export const RPC_METHODS = [
   "import.stop",
   "imported.upload",
   "input.detect_drop",
+  "input.history.append",
+  "input.history.list",
   "knowledge.bases.create",
   "knowledge.bases.delete",
   "knowledge.bases.list",

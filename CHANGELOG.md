@@ -40,7 +40,21 @@ All notable changes to Raven are documented here.
   run's record is sealed, each carried node reading `carried` and naming the
   run it went on in.
 
+- The orchestration guide a model reads before its first `run_subagent_dag`
+  call is about half its former size (11,000 to 5,940 tokens), and once read
+  it stays that much smaller in every later context window. Its graph examples
+  are whole calls the runtime accepts -- two of them used to be node lists
+  without the required `node_summary` -- and each node in them writes its
+  `prompt_template` last, after `routes`, `depends_on` and `when`.
+
 ### Fixed
+
+- A model that refuses a forced tool choice is asked again with the tool on
+  offer instead of failing the call, on every provider wire rather than only
+  the Responses and Anthropic adapters. DeepSeek in thinking mode answers a
+  forced choice with a 400, which over the chat wire reached callers as an
+  error; the refusal is now also recognised when a gateway wraps it.
+  `CONTRACTS_VERSION` moves to 42.
 
 - The *Mode* row of the WebUI's model picker (the sub-agent tier) read the
   conversation being left rather than the one being opened: a switch asked
