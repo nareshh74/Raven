@@ -1,0 +1,14 @@
+[plugin]
+id = "token-optimizer"
+version = "0.1.0"
+display_name = "Token Optimizer"
+bundled = false
+
+[[plugin.contributes.tools]]
+name = "token_optimizer"
+factory = "raven_token_optimizer.plugin:make_tool"
+
+[plugin.config_schema]
+enabled = { type = "boolean" }
+measure_script = { type = "string" }
+default_runtime = { type = "string" }
