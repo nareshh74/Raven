@@ -1,0 +1,31 @@
+[project]
+name = "raven-token-optimizer"
+version = "0.1.0"
+description = "Token Optimizer native tool plugin for Raven"
+requires-python = ">=3.12"
+dependencies = ["raven"]
+
+[tool.uv.sources]
+raven = { workspace = true }
+
+[project.entry-points."raven.plugins"]
+token-optimizer = "raven_token_optimizer.plugin:register"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["raven_token_optimizer"]
+
+[tool.hatch.build]
+include = [
+    "raven_token_optimizer/**/*.py",
+    "raven_token_optimizer/raven-plugin.toml",
+]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "raven_token_optimizer/",
+    "pyproject.toml",
+]
