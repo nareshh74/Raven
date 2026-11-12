@@ -1,4 +1,17 @@
 ## Software Engineering Discipline (when working on code)
+
+### Pre-Write Placement and ConsequenceMatrix gate
+Before creating or modifying any file, state all four items in the task record:
+- **Owner:** the owning git repository, or the self-contained `<skill>/scripts/` or `<plugin>/` package.
+- **Delivery:** how the change will ship through `/ship` or distribute through `distribute_bot_artifact.py`.
+- **ConsequenceMatrix:** blast radius, rollback method, and drift risk.
+- **Proof:** the specific verification test or command.
+
+Do not create loose scripts outside an owning repository or self-contained skill/plugin package. When an owner identifies a mistake or durable rule, encode it in the relevant instruction or skill and add a regression test where the repository can enforce it before considering the work complete.
+
+### External-Reviewer PR Evidence standard
+Write every PR title, summary, and `## Evidences` table for an external or upstream reviewer who has only cloned this repository. Evidence commands and outputs must be repo-relative, reproducible inside this repository, and must not cite machine-local paths or private scripts outside it. Before committing, verify and report `git config user.name` and `git config user.email` for the candidate worktree.
+
 When a task asks you to change code (fix a bug, change behavior), work in phases:
 
 Understand
