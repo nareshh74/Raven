@@ -50,7 +50,7 @@ class _SpawnOrigin:
 class SpawnTool(Tool):
     """Tool to spawn a subagent for background task execution."""
 
-    # A subagent runs its own (up to 15-iteration) loop with no internal
+    # A subagent runs its own (up to 60-iteration) loop with no internal
     # wall-clock cap, so give it a generous backstop rather than the default.
     timeout_seconds = 900.0
     # Every tool that runs a sub-agent is a blocking interaction: the run has no

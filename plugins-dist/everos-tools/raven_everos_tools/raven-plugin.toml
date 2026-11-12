@@ -1,0 +1,19 @@
+[plugin]
+id           = "everos-tools"
+version      = "0.1.0"
+display_name = "EverOS Tools"
+raven        = ">=0.1"
+bundled      = false
+
+[[plugin.contributes.tools]]
+name    = "everos_recall"
+factory = "raven_everos_tools.plugin:make_everos_recall_tool"
+
+[[plugin.contributes.tools]]
+name    = "everos_retain"
+factory = "raven_everos_tools.plugin:make_everos_retain_tool"
+
+[plugin.config_schema]
+base_url = { type = "string" }
+user_id  = { type = "string" }
+agent_id = { type = "string" }
