@@ -161,3 +161,5 @@ plugins-dist/ppt-engine/raven_ppt/assets/templates/covers/
 # (AGENTS.md section 7).
 docs-site/site/
 .knowl/
+agents/*/.lock/
+agents/*/config.migrations.json
