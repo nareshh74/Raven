@@ -10,7 +10,7 @@
 // back. cycleHistory relies on this ordering: dir<0 starts at the last index
 // (newest) and walks toward index 0 (oldest); dir>0 walks forward again.
 
-import { mkdtempSync } from 'node:fs'
+import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
@@ -84,5 +84,49 @@ describe('input history store (backs cycleHistory)', () => {
       'spaced command',
       'line a\nline b'
     ])
+  })
+
+  it('loads a CRLF file with the same entries an LF one yields', async () => {
+    const crlfDir = mkdtempSync(join(tmpdir(), 'raven-hist-crlf-'))
+    const suiteHome = process.env.RAVEN_HOME
+
+    vi.stubEnv('RAVEN_HOME', crlfDir)
+    try {
+      writeFileSync(
+        join(crlfDir, '.raven_history'),
+        '# 2026-11-09 00:00:00\r\n+first command\r\n# 2026-11-09 00:00:01\r\n+second command\r\n# 2026-11-09 00:00:02\r\n+line a\r\n+line b\r\n'
+      )
+
+      vi.resetModules()
+      const reloaded: HistoryModule = await import('../lib/history.js')
+
+      expect(reloaded.load()).toEqual(['first command', 'second command', 'line a\nline b'])
+    } finally {
+      vi.stubEnv('RAVEN_HOME', suiteHome)
+    }
+  })
+
+  it('loads a file of lone CRs with the same entries an LF one yields', async () => {
+    // `Path.read_text` applies universal-newline translation, so the host
+    // reads a CR-only file the way it reads an LF one. The TUI has to fold
+    // the same endings, or the two front ends disagree about the file they
+    // share.
+    const crDir = mkdtempSync(join(tmpdir(), 'raven-hist-cr-'))
+    const suiteHome = process.env.RAVEN_HOME
+
+    vi.stubEnv('RAVEN_HOME', crDir)
+    try {
+      writeFileSync(
+        join(crDir, '.raven_history'),
+        '# 2026-11-09 00:00:00\r+first command\r# 2026-11-09 00:00:01\r+second command\r'
+      )
+
+      vi.resetModules()
+      const reloaded: HistoryModule = await import('../lib/history.js')
+
+      expect(reloaded.load()).toEqual(['first command', 'second command'])
+    } finally {
+      vi.stubEnv('RAVEN_HOME', suiteHome)
+    }
   })
 })
