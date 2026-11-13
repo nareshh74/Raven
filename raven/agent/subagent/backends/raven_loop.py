@@ -203,7 +203,7 @@ class RavenLoopBackend:
 
     kind = "raven-loop"
     streams = True
-    _MAX_ITERATIONS = 60
+    _MAX_ITERATIONS = 500
 
     def __init__(
         self,
