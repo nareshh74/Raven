@@ -25,12 +25,12 @@ def cfg(tmp_path, monkeypatch):
 
 
 def test_default_is_hosted(cfg):
-    assert web_mod._firecrawl_url("/v1/search") == "https://api.firecrawl.dev/v1/search"
+    assert web_mod._firecrawl_url("/v2/search") == "https://api.firecrawl.dev/v2/search"
 
 
 def test_config_base_url(cfg):
     cfg("http://localhost:3003/")
-    assert web_mod._firecrawl_url("/v1/search") == "http://localhost:3003/v1/search"
+    assert web_mod._firecrawl_url("/v2/search") == "http://localhost:3003/v2/search"
 
 
 def test_env_beats_config(cfg, monkeypatch):

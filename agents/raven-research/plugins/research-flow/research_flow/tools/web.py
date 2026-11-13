@@ -262,7 +262,7 @@ SEARCH_PROVIDERS: dict[str, SearchProviderSpec] = {
         vendor="firecrawl",
         label="Firecrawl",
         env_var="FIRECRAWL_API_KEY",
-        # ``/v1/search`` documents no result-offset parameter.
+        # ``/v2/search`` documents no result-offset parameter.
         paginates=False,
     ),
     "serply": SearchProviderSpec(
@@ -1275,7 +1275,7 @@ class WebSearchTool(Tool):
             )
         if self.provider == "firecrawl":
             return await client.post(
-                _firecrawl_url("/v1/search"),
+                _firecrawl_url("/v2/search"),
                 json={"query": query, "limit": n},
                 headers={
                     "Accept": "application/json",
@@ -1387,7 +1387,7 @@ class WebSearchTool(Tool):
             # the saturation streak, and "the endpoint refused" must not.
             if data.get("success") is False:
                 raise ValueError(f"Firecrawl: {data.get('error') or 'search failed'}")
-            return {"organic": _rows(data.get("data"), url="url", snippet="description")}
+            return {"organic": _rows((data.get("data") or {}).get("web"), url="url", snippet="description")}
         if self.provider == "serply":
             # Google SERP rows under ``results``; the snippet is ``description``.
             return {"organic": _rows(data.get("results"), url="link", snippet="description")}
@@ -2196,7 +2196,7 @@ class WebFetchTool(Tool):
             async def _send_fc() -> httpx.Response:
                 async with httpx.AsyncClient(timeout=30.0, proxy=self.proxy) as client:
                     return await client.post(
-                        _firecrawl_url("/v1/scrape"),
+                        _firecrawl_url("/v2/scrape"),
                         json={"url": url, "formats": ["markdown"]},
                         headers=headers,
                     )

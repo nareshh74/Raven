@@ -66,7 +66,7 @@ raven agent-plugins remove my-package     # 删除导入的技能
 
 ## 包做不到什么 { #what-a-package-cannot-do }
 
-- **不能把自己注入每一轮对话。** 导入的副本会被去掉 `always` 标记。包的技能
+- **不能把自己注入每一轮会话。** 导入的副本会被去掉 `always` 标记。包的技能
   仍然可被检索，也就是在相关时由路由取用。
 - **不能绕过操作者的屏蔽名单。** 名字在 `skillForge.blocklist` 上的技能不会被
   导入；正文里指向别的产品家目录（`~/.openclaw` 之类）的技能会被拒绝。
@@ -98,6 +98,10 @@ server 以 `<包名>__<server 名>` 命名，因此不会和你自己的 `tools.
 跨更新不丢的目录（`<home>/plugin-data/<包名>/`）。格式定义的两个占位符
 `${PLUGIN_ROOT}` 与 `${PLUGIN_DATA}` 会在 server 的参数、环境变量和工作目录
 中展开。
+
+展开之后，参数或环境变量里带 `..` 路径分量的条目会被拒绝并报告。该检查按
+`/` 和 `\` 切分，所以 URL 里出现 `..` 分段（例如
+`https://example.com/a/../b`）也会被拒绝。
 
 一条坏配置不会让整个包失效：该条目被跳过并报告，其余照常运行。若包的
 `mcp.json` 声明的 Agent Plugins 版本和它的 `plugin.json` 不一致，或文件本身
