@@ -1722,9 +1722,9 @@ def test_shared_skills_follow_the_host_workspace_and_keep_specialist_dirs(homed,
     render.inherit_host_skills(config, host)
 
     assert config["skillForge"]["localDirs"] == [
-        own,
         {"path": str(shared.resolve()), "alwaysEnabled": False},
         {"path": str(global_skills.resolve()), "alwaysEnabled": False},
+        own,
     ]
 
 
@@ -1782,6 +1782,36 @@ def test_rendered_shared_skills_are_searchable_and_readable_without_always_injec
     assert "shared-firecrawl body" in service.load_skill("shared-firecrawl")
     assert any(hit.name == "shared-firecrawl" for hit in service.pool.search("firecrawl", top_k=5))
     assert {meta.name for meta in service.get_always_skills()} == {"specialist"}
+
+
+def test_specialist_skill_shadows_colliding_host_skill_on_by_name_lookup(homed, tmp_path):
+    from raven.config.raven import SkillForgeConfig
+    from raven.memory_engine.skill_forge.catalog import LocalSkillCatalog
+
+    shared = homed / "workspace" / "skills"
+    own = tmp_path / "specialist-skills"
+    for root, body in ((shared, "host humanizer"), (own, "specialist humanizer")):
+        skill = root / "humanizer"
+        skill.mkdir(parents=True)
+        (skill / "SKILL.md").write_text(
+            f"---\nname: humanizer\ndescription: {body}\nalways: true\ninject: description\n---\n{body}",
+            encoding="utf-8",
+        )
+    config = {
+        "agents": {"defaults": {"workspace": str(tmp_path / "acp")}},
+        "skillForge": {"localDirs": [{"path": str(own), "alwaysEnabled": True}]},
+    }
+
+    data = json.loads(render.write_rendered(config, homed).read_text(encoding="utf-8"))
+    service = LocalSkillCatalog(
+        workspace=tmp_path / "acp",
+        config=SkillForgeConfig.model_validate(data["skillForge"]),
+        builtin_skills_dir=tmp_path / "builtin",
+        start_watcher=False,
+    )
+
+    assert "specialist humanizer" in service.load_skill("humanizer")
+    assert [meta.description for meta in service.get_always_skills()] == ["specialist humanizer"]
 
 
 # --- the memory backend: the store is the installation's, the name is the product's

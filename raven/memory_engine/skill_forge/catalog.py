@@ -337,12 +337,22 @@ class LocalSkillCatalog:
         ]
         all_always.sort(key=self._always_sort_key)
         cap = int(getattr(self._config, "always_max", 5) or 5)
-        if len(all_always) > cap:
-            kept = all_always[:cap]
-            dropped = all_always[cap:]
+        full_count = sum(1 for m in all_always if getattr(m, "inject", "full") != "description")
+        if full_count > cap:
+            kept: list[SkillMeta] = []
+            dropped: list[SkillMeta] = []
+            kept_full = 0
+            for m in all_always:
+                if getattr(m, "inject", "full") == "description":
+                    kept.append(m)
+                elif kept_full < cap:
+                    kept.append(m)
+                    kept_full += 1
+                else:
+                    dropped.append(m)
             log.warning(
-                "always skills (%d) exceed always_max (%d), dropped: %s",
-                len(all_always),
+                "always full-body skills (%d) exceed always_max (%d), dropped: %s",
+                full_count,
                 cap,
                 ", ".join(m.name for m in dropped),
             )

@@ -291,6 +291,36 @@ class TestLocalSkillCatalog:
         )
         assert [m.name for m in catalog.get_always_skills()] == ["shipped"]
 
+    def test_always_cap_keeps_description_digests_and_caps_only_full_bodies(self, tmp_path: Path) -> None:
+        ws = tmp_path / "chanwork"
+        (ws / "skills").mkdir(parents=True)
+        builtin = tmp_path / "builtin"
+        builtin.mkdir()
+        for root, name, inject in (
+            (builtin, "shipped-full", "full"),
+            (ws / "skills", "mine-full", "full"),
+            (ws / "skills", "digest-a", "description"),
+            (ws / "skills", "digest-b", "description"),
+        ):
+            d = root / name
+            d.mkdir(parents=True)
+            (d / "SKILL.md").write_text(
+                f"---\nname: {name}\ndescription: d\nalways: true\ninject: {inject}\n---\n\nbody",
+                encoding="utf-8",
+            )
+
+        class _Cfg:
+            always_max = 1
+            disable_always = False
+
+        catalog = LocalSkillCatalog(
+            ws,
+            builtin_skills_dir=builtin,
+            config=_Cfg(),
+            start_watcher=False,
+        )
+        assert [m.name for m in catalog.get_always_skills()] == ["shipped-full", "digest-a", "digest-b"]
+
     def test_load_skills_for_context_renders_body(self, catalog) -> None:
         metas = [m for m in catalog.registry.list_all() if m.name == "pdf-tool"]
         out = catalog.load_skills_for_context(metas)

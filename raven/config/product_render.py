@@ -564,13 +564,15 @@ def inherit_host_skills(config: dict, host: dict) -> None:
         return
     dirs = (config.get("skillForge") or {}).get("localDirs", [])
     seen = {Path(entry["path"]).expanduser().resolve() for entry in dirs}
+    shared_entries: list[dict] = []
     for path in (host_agent_home(host) / "skills", Path.home() / ".agents" / "skills"):
         path = path.expanduser().resolve()
         if path.is_dir() and path not in seen:
-            config.setdefault("skillForge", {}).setdefault("localDirs", []).append(
-                {"path": str(path), "alwaysEnabled": False}
-            )
+            shared_entries.append({"path": str(path), "alwaysEnabled": False})
             seen.add(path)
+    if shared_entries:
+        local_dirs = config.setdefault("skillForge", {}).setdefault("localDirs", [])
+        local_dirs[:0] = shared_entries
 
 
 def inherit_memory_backend(config: dict, host: dict) -> str | None:
