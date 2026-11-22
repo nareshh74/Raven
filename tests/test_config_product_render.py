@@ -1641,6 +1641,149 @@ def test_opt_outs_never_carry_the_products_own_engine():
     assert config == {}
 
 
+def test_host_mcp_servers_fill_only_missing_enabled_servers():
+    host = {
+        "tools": {
+            "mcpServers": {
+                "firecrawl": {"command": "firecrawl", "args": ["--host"], "env": {"TOKEN": "host"}},
+                "llm-wiki": {"url": "http://localhost:19828/mcp", "enabled": True},
+                "serena": {"command": "host-serena"},
+                "openalgo": {"command": "host-openalgo"},
+                "off": {"command": "off", "enabled": False},
+            }
+        }
+    }
+    own = {
+        "serena": {"command": "specialist-serena"},
+        "jobspy": {"command": "jobspy"},
+        "openalgo": {"enabled": False},
+    }
+    config = {"tools": {"mcpServers": copy.deepcopy(own)}}
+    original_host = copy.deepcopy(host)
+
+    render.inherit_host_mcp_servers(config, host)
+    render.inherit_host_mcp_servers(config, host)
+
+    servers = config["tools"]["mcpServers"]
+    assert servers == {**own, **{name: host["tools"]["mcpServers"][name] for name in ("firecrawl", "llm-wiki")}}
+    servers["firecrawl"]["args"].append("--product")
+    servers["firecrawl"]["env"]["TOKEN"] = "product"
+    assert host == original_host
+
+
+@pytest.mark.parametrize(
+    "host", [{}, {"tools": {}}, {"tools": {"mcpServers": {}}}, {"tools": {"mcpServers": {"off": {"enabled": False}}}}]
+)
+def test_host_mcp_servers_do_not_create_empty_config_blocks(host):
+    config = {}
+    render.inherit_host_mcp_servers(config, host)
+    assert config == {}
+
+
+def test_rendered_mcp_servers_still_obey_tool_opt_outs(homed):
+    from raven.permissions.rules import user_tier
+
+    (homed / "config.json").write_text(
+        json.dumps(
+            {
+                "tools": {"mcpServers": {"firecrawl": {"command": "firecrawl"}, "llm-wiki": {"command": "wiki"}}},
+                "permissions": {"mode": "full"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    config = {
+        "tools": {"disabledTools": ["mcp_firecrawl_scrape"]},
+        "permissions": {"tools": {"mcp_llm-wiki_write_page": "deny", "specialist_tool": "allow"}},
+    }
+
+    data = json.loads(render.write_rendered(config, homed).read_text(encoding="utf-8"))
+
+    assert set(data["tools"]["mcpServers"]) == {"firecrawl", "llm-wiki"}
+    assert data["tools"]["disabledTools"] == ["mcp_firecrawl_scrape"]
+    rules = data["permissions"]["tools"]
+    assert user_tier("mcp_llm-wiki_write_page", {}, rules).value == "deny"
+    assert user_tier("mcp_firecrawl_scrape", {}, rules) is None
+
+
+@pytest.mark.parametrize("workspace", [None, "~/.raven/workspace", "custom"])
+def test_shared_skills_follow_the_host_workspace_and_keep_specialist_dirs(homed, tmp_path, workspace):
+    host = {} if workspace is None else {"agents": {"defaults": {"workspace": workspace}}}
+    if workspace == "custom":
+        host["agents"]["defaults"]["workspace"] = str(tmp_path / workspace)
+    shared = (tmp_path / "custom" if workspace == "custom" else homed / "workspace") / "skills"
+    shared.mkdir(parents=True)
+    global_skills = Path.home() / ".agents" / "skills"
+    global_skills.mkdir(parents=True)
+    own = {"path": str(tmp_path / "specialist-skills"), "alwaysEnabled": True}
+    config = {"skillForge": {"localDirs": [dict(own)]}}
+
+    render.inherit_host_skills(config, host)
+    render.inherit_host_skills(config, host)
+
+    assert config["skillForge"]["localDirs"] == [
+        own,
+        {"path": str(shared.resolve()), "alwaysEnabled": False},
+        {"path": str(global_skills.resolve()), "alwaysEnabled": False},
+    ]
+
+
+@pytest.mark.parametrize("enabled", [True, False])
+def test_shared_skills_preserve_existing_directory_settings(homed, enabled):
+    shared = homed / "workspace" / "skills"
+    shared.mkdir(parents=True)
+    entry = {"path": str(shared / ".." / "skills"), "enabled": enabled, "alwaysEnabled": True, "name": "mine"}
+    config = {"skillForge": {"localDirs": [dict(entry)]}}
+
+    render.inherit_host_skills(config, {})
+
+    assert config["skillForge"]["localDirs"] == [entry]
+
+
+def test_shared_skills_do_not_enable_a_disabled_forge(homed):
+    (homed / "workspace" / "skills").mkdir(parents=True)
+    config = {"skillForge": {"enabled": False}}
+    render.inherit_host_skills(config, {})
+    assert config == {"skillForge": {"enabled": False}}
+
+
+def test_missing_shared_skill_directories_leave_the_config_alone(homed):
+    config = {}
+    render.inherit_host_skills(config, {})
+    assert config == {}
+
+
+def test_rendered_shared_skills_are_searchable_and_readable_without_always_injection(homed, tmp_path):
+    from raven.config.raven import SkillForgeConfig
+    from raven.memory_engine.skill_forge.catalog import LocalSkillCatalog
+
+    shared = homed / "workspace" / "skills"
+    own = tmp_path / "specialist-skills"
+    for root, name in ((shared, "shared-firecrawl"), (own, "specialist")):
+        skill = root / name
+        skill.mkdir(parents=True)
+        (skill / "SKILL.md").write_text(
+            f"---\nname: {name}\ndescription: {name} web scraping instructions\nalways: true\n---\n{name} body",
+            encoding="utf-8",
+        )
+    config = {
+        "agents": {"defaults": {"workspace": str(tmp_path / "acp")}},
+        "skillForge": {"localDirs": [{"path": str(own), "alwaysEnabled": True}]},
+    }
+
+    data = json.loads(render.write_rendered(config, homed).read_text(encoding="utf-8"))
+    service = LocalSkillCatalog(
+        workspace=tmp_path / "acp",
+        config=SkillForgeConfig.model_validate(data["skillForge"]),
+        builtin_skills_dir=tmp_path / "builtin",
+        start_watcher=False,
+    )
+
+    assert "shared-firecrawl body" in service.load_skill("shared-firecrawl")
+    assert any(hit.name == "shared-firecrawl" for hit in service.pool.search("firecrawl", top_k=5))
+    assert {meta.name for meta in service.get_always_skills()} == {"specialist"}
+
+
 # --- the memory backend: the store is the installation's, the name is the product's
 
 
@@ -1650,6 +1793,19 @@ def _product(backend="everos", slice_=None, distribution="everos-memory"):
     if slice_ is not None:
         config["plugins"] = {"config": {distribution: dict(slice_)}}
     return config
+
+
+@pytest.mark.parametrize("identity", [{"userId": "user"}, {"agentId": "agent"}, {"userId": "user", "agentId": "agent"}])
+@pytest.mark.parametrize("backend", ["everos", "everos-cloud", None])
+def test_memory_backend_inheritance_preserves_identity_without_a_product_backend(identity, backend):
+    memory = dict(identity)
+    config = {"memory": memory}
+    host = {"memory": {"backend": backend, "userId": "host-user", "agentId": "host-agent"}}
+
+    assert render.inherit_memory_backend(config, host) == backend
+
+    assert config["memory"] is memory
+    assert memory == {**identity, "backend": backend}
 
 
 def test_the_hosts_backend_and_address_replace_the_products():

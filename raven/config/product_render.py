@@ -551,6 +551,28 @@ _MEMORY_SLICE_INHERITED: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
 }
 
 
+def inherit_host_mcp_servers(config: dict, host: dict) -> None:
+    """Share enabled host servers without replacing a product's definitions or opt-outs."""
+    for name, server in (host.get("tools") or {}).get("mcpServers", {}).items():
+        if server.get("enabled", True) and name not in (config.get("tools") or {}).get("mcpServers", {}):
+            config.setdefault("tools", {}).setdefault("mcpServers", {})[name] = copy.deepcopy(server)
+
+
+def inherit_host_skills(config: dict, host: dict) -> None:
+    """Mount shared libraries for retrieval, never for always-on prompt injection."""
+    if (config.get("skillForge") or {}).get("enabled") is False:
+        return
+    dirs = (config.get("skillForge") or {}).get("localDirs", [])
+    seen = {Path(entry["path"]).expanduser().resolve() for entry in dirs}
+    for path in (host_agent_home(host) / "skills", Path.home() / ".agents" / "skills"):
+        path = path.expanduser().resolve()
+        if path.is_dir() and path not in seen:
+            config.setdefault("skillForge", {}).setdefault("localDirs", []).append(
+                {"path": str(path), "alwaysEnabled": False}
+            )
+            seen.add(path)
+
+
 def inherit_memory_backend(config: dict, host: dict) -> str | None:
     """Point the product's long-term memory where the host's points.
 
@@ -671,7 +693,7 @@ def product_state_root(product: str, *, override: str | None = None) -> Path:
     return raven_home() / "workspace" / "subagent_sessions" / product
 
 
-def host_agent_home() -> Path:
+def host_agent_home(host: dict | None = None) -> Path:
     """The Agent home the HOST raven is configured to use.
 
     Read from the host config rather than assumed: an operator who moved
@@ -682,7 +704,8 @@ def host_agent_home() -> Path:
     value against the paper's ``WORKSPACE_DEFAULT_SENTINEL``, no trimming), so
     the two readers of one question cannot drift apart.
     """
-    raw = ((host_config().get("agents") or {}).get("defaults") or {}).get("workspace")
+    host = host_config() if host is None else host
+    raw = ((host.get("agents") or {}).get("defaults") or {}).get("workspace")
     if isinstance(raw, str) and raw and raw != WORKSPACE_DEFAULT_SENTINEL:
         return Path(raw).expanduser()
     return raven_home() / "workspace"
@@ -1067,8 +1090,9 @@ def write_rendered(config: dict, root: Path, *, own_plugins: Iterable[str] = (),
     secrets landed; Windows uses the containing directory's inherited ACLs.
     The pid in the name is what :func:`sweep_stale_renders` reads back.
 
-    The host's permission set and sandbox (:func:`inherit_host_permissions`), plugin opt-outs
-    (:func:`inherit_plugin_opt_outs`) and memory address
+    The host's permission set and sandbox (:func:`inherit_host_permissions`), shared MCP
+    servers (:func:`inherit_host_mcp_servers`), skill libraries (:func:`inherit_host_skills`),
+    plugin opt-outs (:func:`inherit_plugin_opt_outs`) and memory address
     (:func:`inherit_memory_backend`) are merged in here rather than by each
     launcher: every product render ends in this call, so a launcher cannot
     write a config that forgot them. ``own_plugins`` is the product's engine,
@@ -1079,6 +1103,8 @@ def write_rendered(config: dict, root: Path, *, own_plugins: Iterable[str] = (),
     """
     host = host_config()
     inherit_host_permissions(config, host, keep_own_mode=keep_own_mode)
+    inherit_host_mcp_servers(config, host)
+    inherit_host_skills(config, host)
     inherit_plugin_opt_outs(config, host, own=own_plugins)
     inherit_memory_backend(config, host)
     return _write_owner_only(config, root / f".config.rendered.{os.getpid()}.json")

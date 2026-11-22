@@ -159,6 +159,14 @@ Every phase returns a `HookDecision`. Its vocabulary, by field:
   renders it (secrets merged, LLM inherited when you hold no key, state root
   and plugin roots pinned) and the rendered copy lives under the state root,
   never in the folder.
+- **Shared tools and skills follow the host.** Every rendered config inherits
+  enabled host `tools.mcpServers`; a product's same-name definition wins,
+  including `enabled: false`. Tool denials and `tools.disabledTools` still
+  apply; inheritance does not pre-approve calls. Existing host workspace
+  `skills/` and `~/.agents/skills` directories are added to
+  `skillForge.localDirs` with `alwaysEnabled: false`: searchable and readable,
+  not injected wholesale into the prompt. Existing directory entries keep
+  their settings, and `skillForge.enabled: false` prevents these mounts.
 - **Your plugin's slice** is `plugins.config["<id>"]` inside that file --
   yours alone, delivered verbatim as `ctx.config` to every factory. This is
   where your tools' and hooks' own knobs live; the host never interprets it,
