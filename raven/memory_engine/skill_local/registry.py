@@ -74,10 +74,16 @@ def build_skill_meta(
     frontmatter, content = parse_frontmatter(body, line_fallback=True, preserve_body_whitespace=True)
     nested = _parse_nested_metadata(frontmatter.get("metadata", ""))
     requires = nested.get("requires", {}) if isinstance(nested.get("requires"), dict) else {}
-    always = _resolve_always(frontmatter, nested)
+    explicit_always = _resolve_always(frontmatter, nested)
+    has_always_key = "always" in frontmatter or "always" in nested
     if not always_enabled:
         always = False
-    inject = _resolve_inject(frontmatter, nested)
+    elif has_always_key:
+        always = explicit_always
+    else:
+        always = source not in ("workspace", "builtin", "external")
+    default_inject = "description" if (always and not explicit_always) else "full"
+    inject = _resolve_inject(frontmatter, nested, default=default_inject)
 
     # ``stable_key`` is the directory name. For everos it is
     # the sqlite ``skills.id`` string (the pipeline materializes
@@ -529,7 +535,7 @@ def _strip_frontmatter(content: str) -> str:
 _INJECT_MODES = {"full", "description"}
 
 
-def _resolve_inject(frontmatter: dict, nested: dict) -> str:
+def _resolve_inject(frontmatter: dict, nested: dict, *, default: str = "full") -> str:
     """Resolve the always-injection mode, nested metadata taking priority.
 
     Anything unrecognized falls back to ``full`` — the pre-existing
@@ -540,7 +546,7 @@ def _resolve_inject(frontmatter: dict, nested: dict) -> str:
     if raw is None:
         raw = frontmatter.get("inject")
     if raw is None:
-        return "full"
+        return default
     value = str(raw).strip().lower()
     if value not in _INJECT_MODES:
         log.warning(

@@ -1814,6 +1814,50 @@ def test_specialist_skill_shadows_colliding_host_skill_on_by_name_lookup(homed, 
     assert [meta.description for meta in service.get_always_skills()] == ["specialist humanizer"]
 
 
+def test_rendered_universal_skills_and_specialist_local_dirs_inject_as_descriptions(homed, tmp_path):
+    from raven.config.raven import SkillForgeConfig
+    from raven.memory_engine.skill_forge.catalog import LocalSkillCatalog
+
+    shared = homed / "workspace" / "skills"
+    for name in ("caveman", "ponytail", "non-universal-skill"):
+        sdir = shared / name
+        sdir.mkdir(parents=True)
+        (sdir / "SKILL.md").write_text(
+            f"---\nname: {name}\ndescription: {name} cross-cutting rule\nalways: true\n---\n{name} full body text",
+            encoding="utf-8",
+        )
+    own = tmp_path / "specialist-skills"
+    spec_skill = own / "domain-skill"
+    spec_skill.mkdir(parents=True)
+    (spec_skill / "SKILL.md").write_text(
+        "---\nname: domain-skill\ndescription: specialist domain skill\n---\nspecialist domain body",
+        encoding="utf-8",
+    )
+    config = {
+        "agents": {"defaults": {"workspace": str(tmp_path / "acp")}},
+        "skillForge": {"localDirs": [{"name": "spec", "path": str(own), "alwaysEnabled": True}]},
+    }
+
+    data = json.loads(render.write_rendered(config, homed).read_text(encoding="utf-8"))
+    service = LocalSkillCatalog(
+        workspace=tmp_path / "acp",
+        config=SkillForgeConfig.model_validate(data["skillForge"]),
+        builtin_skills_dir=tmp_path / "builtin",
+        start_watcher=False,
+    )
+
+    always_by_name = {meta.name: meta for meta in service.get_always_skills()}
+    assert set(always_by_name) == {"caveman", "ponytail", "domain-skill"}
+    assert always_by_name["caveman"].inject == "description"
+    assert always_by_name["ponytail"].inject == "description"
+    assert always_by_name["domain-skill"].inject == "description"
+    block = service.load_always_block(list(always_by_name.values()))
+    assert "### Skill: caveman" in block
+    assert "### Skill: domain-skill" in block
+    assert "caveman full body text" not in block
+    assert "specialist domain body" not in block
+
+
 # --- the memory backend: the store is the installation's, the name is the product's
 
 

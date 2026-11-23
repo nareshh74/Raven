@@ -558,18 +558,77 @@ def inherit_host_mcp_servers(config: dict, host: dict) -> None:
             config.setdefault("tools", {}).setdefault("mcpServers", {})[name] = copy.deepcopy(server)
 
 
-def inherit_host_skills(config: dict, host: dict) -> None:
-    """Mount shared libraries for retrieval, never for always-on prompt injection."""
+UNIVERSAL_SHARED_SKILLS: tuple[str, ...] = (
+    "caveman",
+    "i-have-adhd",
+    "ponytail",
+    "humanizer",
+    "verify-and-stop",
+    "surgical-patch",
+)
+
+
+def _sync_universal_shared_skills(host_skills_dir: Path, target_root: Path) -> Path | None:
+    """Materialize the curated universal cross-cutting skill set with ``inject: description``."""
+    if not host_skills_dir.is_dir():
+        return None
+    written = 0
+    for name in UNIVERSAL_SHARED_SKILLS:
+        src_md = host_skills_dir / name / "SKILL.md"
+        if not src_md.is_file():
+            continue
+        raw = src_md.read_text(encoding="utf-8")
+        if raw.startswith("---"):
+            parts = raw.split("---", 2)
+            if len(parts) == 3:
+                fm_lines = [
+                    line
+                    for line in parts[1].splitlines()
+                    if not line.strip().startswith(("always:", "inject:"))
+                ]
+                fm_lines.append("always: true")
+                fm_lines.append("inject: description")
+                raw = "---\n" + "\n".join(fm_lines).strip() + "\n---" + parts[2]
+        dst_dir = target_root / name
+        dst_dir.mkdir(parents=True, exist_ok=True)
+        dst_md = dst_dir / "SKILL.md"
+        if not dst_md.is_file() or dst_md.read_text(encoding="utf-8") != raw:
+            dst_md.write_text(raw, encoding="utf-8")
+        written += 1
+    return target_root if written else None
+
+
+def inherit_host_skills(
+    config: dict,
+    host: dict,
+    *,
+    universal_root: Path | None = None,
+) -> None:
+    """Mount curated universal skills as descriptions and shared libraries for retrieval."""
     if (config.get("skillForge") or {}).get("enabled") is False:
         return
     dirs = (config.get("skillForge") or {}).get("localDirs", [])
     seen = {Path(entry["path"]).expanduser().resolve() for entry in dirs}
     shared_entries: list[dict] = []
-    for path in (host_agent_home(host) / "skills", Path.home() / ".agents" / "skills"):
+    host_skills = host_agent_home(host) / "skills"
+    for path in (host_skills, Path.home() / ".agents" / "skills"):
         path = path.expanduser().resolve()
         if path.is_dir() and path not in seen:
             shared_entries.append({"path": str(path), "alwaysEnabled": False})
             seen.add(path)
+    if universal_root is not None:
+        try:
+            synced_univ = _sync_universal_shared_skills(
+                host_skills.expanduser().resolve(),
+                universal_root.expanduser().resolve(),
+            )
+        except OSError:
+            synced_univ = None
+        if synced_univ is not None and synced_univ.is_dir() and synced_univ not in seen:
+            shared_entries.append(
+                {"name": "universal-skills", "path": str(synced_univ), "alwaysEnabled": True}
+            )
+            seen.add(synced_univ)
     if shared_entries:
         local_dirs = config.setdefault("skillForge", {}).setdefault("localDirs", [])
         local_dirs[:0] = shared_entries
@@ -1106,7 +1165,7 @@ def write_rendered(config: dict, root: Path, *, own_plugins: Iterable[str] = (),
     host = host_config()
     inherit_host_permissions(config, host, keep_own_mode=keep_own_mode)
     inherit_host_mcp_servers(config, host)
-    inherit_host_skills(config, host)
+    inherit_host_skills(config, host, universal_root=root / ".universal-skills")
     inherit_plugin_opt_outs(config, host, own=own_plugins)
     inherit_memory_backend(config, host)
     return _write_owner_only(config, root / f".config.rendered.{os.getpid()}.json")

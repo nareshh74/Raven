@@ -333,7 +333,10 @@ class LocalSkillCatalog:
         all_always = [
             m
             for m in self._registry.list_all()
-            if m.always and not self._is_blocked(m.name) and self._registry.check_available(m.name, source=m.source)
+            if m.always
+            and not self._is_blocked(m.name)
+            and self._registry.check_available(m.name, source=m.source)
+            and self._registry.get(m.name) is m
         ]
         all_always.sort(key=self._always_sort_key)
         cap = int(getattr(self._config, "always_max", 5) or 5)
