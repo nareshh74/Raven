@@ -36,6 +36,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import sys
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, get_args
@@ -568,6 +569,33 @@ UNIVERSAL_SHARED_SKILLS: tuple[str, ...] = (
 )
 
 
+def _description_only_skill_text(raw: str) -> str:
+    """Force ``always: true`` / ``inject: description`` at top level; drop nested overrides."""
+    import yaml
+
+    raw = raw.lstrip(chr(0xFEFF)).lstrip()
+    fm: dict = {}
+    body = raw
+    if raw.startswith("---"):
+        parts = raw.split("---", 2)
+        if len(parts) == 3:
+            try:
+                loaded = yaml.safe_load(parts[1]) or {}
+            except yaml.YAMLError:
+                loaded = {}
+            if isinstance(loaded, dict):
+                fm, body = loaded, parts[2]
+    meta = fm.get("metadata")
+    if isinstance(meta, dict):
+        for key in ("always", "inject"):
+            meta.pop(key, None)
+    fm["always"] = True
+    fm["inject"] = "description"
+    return "---\n" + yaml.safe_dump(fm, sort_keys=False, allow_unicode=True) + "---" + (
+        body if body.startswith("\n") else "\n" + body
+    )
+
+
 def _sync_universal_shared_skills(host_skills_dir: Path, target_root: Path) -> Path | None:
     """Materialize the curated universal cross-cutting skill set with ``inject: description``."""
     if not host_skills_dir.is_dir():
@@ -577,24 +605,17 @@ def _sync_universal_shared_skills(host_skills_dir: Path, target_root: Path) -> P
         src_md = host_skills_dir / name / "SKILL.md"
         if not src_md.is_file():
             continue
-        raw = src_md.read_text(encoding="utf-8")
-        if raw.startswith("---"):
-            parts = raw.split("---", 2)
-            if len(parts) == 3:
-                fm_lines = [
-                    line
-                    for line in parts[1].splitlines()
-                    if not line.strip().startswith(("always:", "inject:"))
-                ]
-                fm_lines.append("always: true")
-                fm_lines.append("inject: description")
-                raw = "---\n" + "\n".join(fm_lines).strip() + "\n---" + parts[2]
+        raw = _description_only_skill_text(src_md.read_text(encoding="utf-8"))
         dst_dir = target_root / name
         dst_dir.mkdir(parents=True, exist_ok=True)
         dst_md = dst_dir / "SKILL.md"
         if not dst_md.is_file() or dst_md.read_text(encoding="utf-8") != raw:
             dst_md.write_text(raw, encoding="utf-8")
         written += 1
+    if target_root.is_dir():
+        for stale in target_root.iterdir():
+            if stale.is_dir() and stale.name not in UNIVERSAL_SHARED_SKILLS:
+                shutil.rmtree(stale, ignore_errors=True)
     return target_root if written else None
 
 

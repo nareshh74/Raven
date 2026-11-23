@@ -2121,3 +2121,49 @@ def test_every_render_carries_the_hosts_permission_set(tmp_path, monkeypatch):
     monkeypatch.setattr(render, "host_config", lambda: {"permissions": _HOST_SET})
     path = render.write_rendered({"agents": {}}, tmp_path)
     assert json.loads(path.read_text())["permissions"] == _HOST_SET
+
+
+def _synced_universal(tmp_path, files, target=None):
+    host = tmp_path / "hostskills"
+    for name, text in files.items():
+        (host / name).mkdir(parents=True, exist_ok=True)
+        (host / name / "SKILL.md").write_text(text, encoding="utf-8")
+    target = target or tmp_path / "univ"
+    render._sync_universal_shared_skills(host, target)
+    return target
+
+
+def test_universal_sync_handles_bom_and_missing_frontmatter(tmp_path):
+    out = _synced_universal(
+        tmp_path,
+        {
+            "caveman": "﻿\n---\nname: caveman\ndescription: d\n---\nbody",
+            "ponytail": "no frontmatter body",
+        },
+    )
+    for name in ("caveman", "ponytail"):
+        text = (out / name / "SKILL.md").read_text(encoding="utf-8")
+        assert text.startswith("---\n")
+        assert "always: true" in text and "inject: description" in text
+    assert "no frontmatter body" in (out / "ponytail" / "SKILL.md").read_text(encoding="utf-8")
+
+
+def test_universal_sync_strips_nested_metadata_inject(tmp_path):
+    import yaml
+
+    out = _synced_universal(
+        tmp_path,
+        {"caveman": "---\nname: caveman\nmetadata:\n  inject: full\n  always: false\n  x: 1\n---\nbody"},
+    )
+    fm = yaml.safe_load((out / "caveman" / "SKILL.md").read_text(encoding="utf-8").split("---")[1])
+    assert fm["inject"] == "description" and fm["always"] is True
+    assert fm["metadata"] == {"x": 1}
+
+
+def test_universal_sync_prunes_stale_dirs(tmp_path):
+    target = tmp_path / "univ"
+    (target / "removed-skill").mkdir(parents=True)
+    (target / "removed-skill" / "SKILL.md").write_text("x", encoding="utf-8")
+    _synced_universal(tmp_path, {"caveman": "---\nname: caveman\n---\nb"}, target)
+    assert not (target / "removed-skill").exists()
+    assert (target / "caveman" / "SKILL.md").is_file()
