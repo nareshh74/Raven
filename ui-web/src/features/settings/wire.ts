@@ -72,9 +72,6 @@ export function install(): void {
     /* Not awaited: the pick repaints synchronously and the persist speaks for
        itself if it fails. */
     setLang: (v: string) => { void langPick(v as 'en' | 'zh', { persist: true }) },
-    setAutonomyMode: (v: string) => {
-      void gateway().call('config.set', { key: 'agents.defaults.autonomyMode', value: v }).then(() => { refreshSoon() })
-    },
   })
 
   /* The pick's write-back. In a conversation it reaches that conversation only
