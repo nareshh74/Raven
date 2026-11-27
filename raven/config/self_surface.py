@@ -301,7 +301,7 @@ SECTIONS: tuple[Section, ...] = (
                 "pin",
                 _E.NEXT_TURN,
                 writer="settings",
-                note='value is {"model": "<model>", "provider": "<provider>"}',
+                note='Requires model and provider; may also set protocol, endpointPath and timeoutSeconds.',
                 keys=("model", "provider"),
             ),
             Setting(
@@ -311,6 +311,9 @@ SECTIONS: tuple[Section, ...] = (
                 _E.NEXT_TURN,
                 writer="settings",
             ),
+            Setting("decisionModel.protocol", "Decision wire dialect (unset uses chat and emits an advisory)", "str", _E.NEXT_TURN, writer="settings"),
+            Setting("decisionModel.endpointPath", "Origin-relative native decision endpoint path", "str", _E.NEXT_TURN, writer="settings"),
+            Setting("decisionModel.timeoutSeconds", "Routing deadline override (0.5 to 15 seconds)", "float", _E.NEXT_TURN, writer="settings"),
             Setting(
                 "decisionModel.useForSpecialists",
                 "Use the decision model to assign tasks to specialists",

@@ -1418,6 +1418,7 @@ def test_provider(
     full_catalogue: bool = False,
     check_credential: bool = False,
     section_override: Mapping[str, Any] | None = None,
+    section_snapshot: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Verify a provider's credentials via a free GET request to ``/v1/models``.
 
@@ -1482,9 +1483,12 @@ def test_provider(
             "error": str(exc),
         }
 
-    path = config_path or get_config_path()
-    data = read_raw_or_raise(path)
-    raw_section = _raw_section(data, name)
+    if section_snapshot is None:
+        path = config_path or get_config_path()
+        data = read_raw_or_raise(path)
+        raw_section = _raw_section(data, name)
+    else:
+        raw_section = dict(section_snapshot)
     if section_override:
         raw_section = _with_override(raw_section, section_override)
     try:
@@ -2179,7 +2183,7 @@ def _endpoint_capabilities(item: dict[str, Any]) -> list[str]:
     ]
 
 
-def _model_facts_from_payload(payload: Any) -> dict[str, dict[str, list[str]]]:
+def _model_facts_from_payload(payload: Any) -> dict[str, dict[str, Any]]:
     """What each row of a catalogue says about itself.
 
     Only rows carrying at least one fact are listed: an id alone says nothing a
@@ -2188,7 +2192,7 @@ def _model_facts_from_payload(payload: Any) -> dict[str, dict[str, list[str]]]:
     data = _catalogue_rows(payload)
     if data is None:
         return {}
-    facts: dict[str, dict[str, list[str]]] = {}
+    facts: dict[str, dict[str, Any]] = {}
     for item in data:
         if not isinstance(item, dict):
             continue
@@ -2197,8 +2201,14 @@ def _model_facts_from_payload(payload: Any) -> dict[str, dict[str, list[str]]]:
             continue
         outputs = _output_modalities(item)
         capabilities = _endpoint_capabilities(item)
-        if outputs or capabilities:
-            facts[mid] = {"capabilities": capabilities, "output_modalities": outputs}
+        metadata: dict[str, Any] = {}
+        if isinstance(item.get("decision"), dict):
+            metadata["decision"] = item["decision"]
+        latency = item.get("observedLatencyMs", item.get("observed_latency_ms"))
+        if isinstance(latency, (int, float)) and not isinstance(latency, bool) and latency >= 0:
+            metadata["observedLatencyMs"] = latency
+        if outputs or capabilities or metadata:
+            facts[mid] = {"capabilities": capabilities, "output_modalities": outputs, **metadata}
     return facts
 
 

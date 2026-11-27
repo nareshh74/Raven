@@ -730,6 +730,7 @@ async def settings_get(params: dict, *, agent_loop_factory=None) -> dict:
         vendor, ready, reason = "", False, "not_ready"
     return {
         "settings": _mask_secrets(raw),
+        "decisionModel": _decision_metadata(raw),
         "config_path": str(path),
         "raven_version": ver,
         "skill_hub_on": hub_on,
@@ -903,6 +904,10 @@ async def settings_set(params: dict, *, agent_loop_factory=None) -> dict:
             from raven.agent.subagent.backends.env import refresh_login_shell_env
 
             await asyncio.to_thread(refresh_login_shell_env)
+        if key == "decisionModel" or key.startswith("decisionModel."):
+            from raven.config.loader import read_raw_or_raise, get_config_path
+
+            written["decisionModel"] = _decision_metadata(read_raw_or_raise(get_config_path()))
         return written
 
     if key.startswith("plugins.config."):
@@ -1076,23 +1081,75 @@ def _chk_pin_model(key: str):
     return chk
 
 
-def _chk_decision_model(key: str):
-    inner = _chk_pin_model(key)
+def _chk_decision_field(field: str):
+    def chk(value: Any):
+        from pydantic import ValidationError
+        from raven.config.raven import DecisionModelConfig
 
-    def chk(v: Any) -> str | None:
-        model = inner(v)
-        if model is None:
-            return None
-        from raven.agent.decision_model import is_system1_decision_model
-
-        if not is_system1_decision_model(model):
-            raise ConfigValidationError(
-                "decisionModel must be a dedicated decision model "
-                f"(e.g. microsoft-decision-1, gemini-decision-1, gpt-6-luna-decisions); got '{model}'"
-            )
-        return model
+        try:
+            cfg = DecisionModelConfig.model_validate({field: value})
+        except ValidationError:
+            raise ConfigValidationError(f"invalid decisionModel.{field}") from None
+        return cfg.model_dump(by_alias=True)[field]
 
     return chk
+
+
+def _decision_metadata(raw: dict) -> dict:
+    from pydantic import ValidationError
+    from raven.config.raven import DecisionModelConfig
+    from raven.providers.decision_protocols import list_decision_protocols, resolve_decision_capability
+    from raven.providers.registry import find_by_name
+    from raven.providers.served_models import recall
+
+    node = raw.get("decisionModel")
+    if node is None:
+        node = raw.get("decision_model")
+    advisories = []
+    if node is None:
+        cfg = DecisionModelConfig()
+    elif not isinstance(node, dict):
+        cfg = DecisionModelConfig()
+        advisories.append({
+            "code": "invalid_decision_config",
+            "message": "decisionModel configuration is invalid; fix or clear it in settings.",
+        })
+    else:
+        fields = {name for name in DecisionModelConfig.model_fields} | {
+            field.alias for field in DecisionModelConfig.model_fields.values() if field.alias
+        }
+        try:
+            cfg = DecisionModelConfig.model_validate({k: v for k, v in node.items() if k in fields})
+        except ValidationError:
+            cfg = DecisionModelConfig()
+            advisories.append({
+                "code": "invalid_decision_config",
+                "message": "decisionModel configuration is invalid; fix or clear it in settings.",
+            })
+    providers_node = raw.get("providers")
+    section = providers_node.get(cfg.provider or "", {}) if isinstance(providers_node, dict) else {}
+    if not isinstance(section, dict):
+        section = {}
+    served = recall(cfg.provider or "")
+    capability = resolve_decision_capability(cfg.model or "", cfg.provider, section, find_by_name(cfg.provider or ""), served)
+    protocol = cfg.protocol or "chat"
+    if cfg.model and cfg.protocol is None and protocol == "chat":
+        advisories.append({
+            "code": "protocol_auto_chat",
+            "message": "Protocol defaults to chat. For native endpoints set decisionModel.protocol "
+                       "explicitly (criteria_map_inline / criteria_map) and endpointPath.",
+        })
+    overlays = section.get("modelOverlay", section.get("model_overlay", {})) or {}
+    facts = {**served.get(cfg.model, {}), **overlays.get(cfg.model, {})}
+    if capability.is_reasoning or "reasoning" in facts.get("capabilities", []):
+        advisories.append({"code": "reasoning_model_detected", "message": "Reasoning may exceed the routing deadline."})
+    latency = facts.get("observedLatencyMs", facts.get("observed_latency_ms"))
+    if isinstance(latency, (int, float)) and latency > (cfg.timeout_seconds or 2.0) * 1000:
+        advisories.append({"code": "high_observed_latency", "message": "Observed latency exceeds the decision deadline."})
+    return {
+        **cfg.model_dump(by_alias=True), "effectiveProtocol": protocol,
+        "availableProtocols": list_decision_protocols(), "advisories": advisories,
+    }
 
 
 def _configured_provider_section(slug: str) -> bool:
@@ -1155,9 +1212,10 @@ def _chk_pin_pair(parent: str, model_field: str, provider_field: str):
     their validators are what this delegates to.
     """
     fields = {model_field, provider_field}
+    optional = {"protocol", "endpointPath", "timeoutSeconds"} if parent == "decisionModel" else set()
 
     def chk(value: Any) -> dict:
-        if not isinstance(value, dict) or set(value) != fields:
+        if not isinstance(value, dict) or not fields <= set(value) <= fields | optional:
             raise ConfigValidationError(f"{parent} must contain exactly {model_field} and {provider_field}")
         return {k: _SETTINGS_SIMPLE_KEYS[f"{parent}.{k}"](v) for k, v in value.items()}
 
@@ -1272,7 +1330,10 @@ _SETTINGS_SIMPLE_KEYS: dict[str, Any] = {
     "sessionTitle.provider": _chk_pin_provider("sessionTitle.provider"),
     "translate.model": _chk_pin_model("translate.model"),
     "translate.provider": _chk_pin_provider("translate.provider"),
-    "decisionModel.model": _chk_decision_model("decisionModel.model"),
+    "decisionModel.model": _chk_pin_model("decisionModel.model"),
+    "decisionModel.protocol": _chk_decision_field("protocol"),
+    "decisionModel.endpointPath": _chk_decision_field("endpointPath"),
+    "decisionModel.timeoutSeconds": _chk_decision_field("timeoutSeconds"),
     "decisionModel.provider": _chk_pin_provider("decisionModel.provider"),
     "decisionModel.useForSkills": _chk_bool("decisionModel.useForSkills"),
     "decisionModel.useForSpecialists": _chk_bool("decisionModel.useForSpecialists"),

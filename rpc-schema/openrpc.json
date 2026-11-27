@@ -1094,6 +1094,13 @@
             "providers"
           ],
           "properties": {
+            "decision_protocols": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": {"$ref": "#/components/schemas/JsonValue"}
+              }
+            },
             "model": {
               "type": "string"
             },
@@ -5687,6 +5694,10 @@
         "schema": {
           "additionalProperties": false,
           "properties": {
+            "decisionModel": {
+              "type": "object",
+              "additionalProperties": {"$ref": "#/components/schemas/JsonValue"}
+            },
             "settings": {
               "additionalProperties": {
                 "$ref": "#/components/schemas/JsonValue"

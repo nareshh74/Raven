@@ -4,6 +4,13 @@ from __future__ import annotations
 
 from typing import Any, Literal, TypeAlias, cast
 
+from raven.providers.decision_protocols import (  # noqa: F401
+    DecisionProtocolAdapter,
+    get_decision_adapter,
+    list_decision_protocols,
+    register_decision_adapter,
+)
+
 ApiProtocol: TypeAlias = Literal["chat", "responses", "anthropic"]
 ALL_PROTOCOLS: tuple[ApiProtocol, ...] = ("chat", "responses", "anthropic")
 

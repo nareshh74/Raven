@@ -305,6 +305,14 @@ class LLMProvider(_LLMProviderPaper):
 
     _CHAT_RETRY_DELAYS = (1, 2, 4)
 
+    async def decision_credentials(self) -> tuple[str, dict[str, str]]:
+        """Transport credentials for a non-chat wire on this provider's origin."""
+        headers = {}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        headers.update(getattr(self, "extra_headers", {}) or {})
+        return self.api_base or "", headers
+
     def __init_subclass__(cls, **kwargs: Any) -> None:
         # Every adapter and wrapper is billed where it is called, however it is
         # reached; see raven.providers.usage_record.

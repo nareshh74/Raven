@@ -22,7 +22,10 @@ Order matters — it controls match priority and fallback. Gateways first.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from raven.providers.decision_protocols import DecisionCapability
 
 
 @dataclass(frozen=True)
@@ -121,6 +124,9 @@ class ProviderSpec:
 
     # Provider supports cache_control on content blocks (e.g. Anthropic prompt caching)
     supports_prompt_caching: bool = False
+    supports_models_endpoint: bool = True
+    decision: DecisionCapability | None = None
+    decision_api_base: str = ""
 
     # The reasoning-effort words this vendor's API accepts, stated here when
     # LiteLLM's table carries the model but not its ladder and the per-level
@@ -848,6 +854,7 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
     # Gemini: needs "gemini/" prefix for LiteLLM.
     ProviderSpec(
         name="gemini",
+        decision_api_base="https://generativelanguage.googleapis.com",
         key_url="https://aistudio.google.com/apikey",
         keywords=("gemini",),
         env_key="GEMINI_API_KEY",

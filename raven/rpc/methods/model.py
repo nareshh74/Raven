@@ -108,7 +108,7 @@ def _parse(model_cls: type, params: dict) -> Any:
 #: ``None``, which is what a provider absent from the config resolves to.
 _UNLOADED: Any = object()
 
-_LIVE_MODEL_CACHE_TTL_SECONDS = 5.0
+_LIVE_MODEL_CACHE_TTL_SECONDS = 15.0
 _LIVE_MODEL_CACHE: dict[tuple[str, str], tuple[float, tuple[str, ...]]] = {}
 
 
@@ -191,26 +191,12 @@ def _provider_models(slug: str, *, configured: bool, section: Any = _UNLOADED) -
 
 
 def _runtime_models(slug: str, *, configured: bool, section: Any = _UNLOADED) -> tuple[str, ...]:
-    """Models reported by a configured runtime rather than a static catalogue.
-
-    Codex has no static list worth offering: the registry default is refused by
-    the backend, and the entries LiteLLM's table carries are not the slugs an
-    account is entitled to. LM Studio serves whichever models are loaded in the
-    local process, so its ``/v1/models`` response is likewise authoritative.
-
-    An unconfigured provider has nothing to report. LM Studio probes are cached
-    briefly so repeated picker refreshes do not turn into repeated local HTTP
-    calls, while a model loaded after the picker opens appears within seconds.
-    """
+    """Probe configured model catalogues with a bounded request and short TTL."""
     if not configured:
         return ()
 
-    if slug == "openai_codex":
-        from raven.providers.codex_catalog import account_models
-
-        return tuple(_stored_spelling(slug, model) for model in account_models())
-
-    if slug != "lm_studio":
+    spec = find_by_name(slug)
+    if not getattr(spec, "supports_models_endpoint", True):
         return ()
 
     if section is _UNLOADED:
@@ -218,11 +204,22 @@ def _runtime_models(slug: str, *, configured: bool, section: Any = _UNLOADED) ->
             cfg = get_provider_config(slug, redact_secrets=False)
         except KeyError:
             cfg = {}
+        if not cfg.get("supports_models_endpoint", cfg.get("supportsModelsEndpoint", True)):
+            return ()
         api_base = str(cfg.get("api_base") or "")
+        snapshot = cfg
     else:
         api_base = str(getattr(section, "api_base", None) or "")
+        if not getattr(section, "supports_models_endpoint", True):
+            return ()
+        snapshot = section.model_dump() if section is not None else {}
 
-    cache_key = (slug, api_base)
+    from raven.home import get_config_path
+
+    api_key = str(snapshot.get("api_key") or snapshot.get("apiKey") or "")
+    extra_headers = snapshot.get("extra_headers") or snapshot.get("extraHeaders") or {}
+    header_sig = tuple(sorted((str(k), str(v)) for k, v in extra_headers.items())) if isinstance(extra_headers, dict) else ()
+    cache_key = (slug, api_base, api_key, header_sig, str(get_config_path()))
     now = time.monotonic()
     cached = _LIVE_MODEL_CACHE.get(cache_key)
     if cached and now - cached[0] < _LIVE_MODEL_CACHE_TTL_SECONDS:
@@ -230,9 +227,31 @@ def _runtime_models(slug: str, *, configured: bool, section: Any = _UNLOADED) ->
 
     from raven.config.update_providers import test_provider
 
-    result = test_provider(slug, timeout_s=2)
+    result = test_provider(slug, timeout_s=2, section_snapshot=snapshot)
     raw_models = result.get("model_ids") if result.get("ok") else None
     models = tuple(_stored_spelling(slug, model) for model in (raw_models or []) if isinstance(model, str) and model)
+    if result.get("ok"):
+        from raven.providers.served_models import recall, remember
+
+        previous = recall(slug)
+        facts = result.get("model_facts") or {}
+        implied = result.get("implied_capabilities") or {}
+        discovered = {}
+        for raw in raw_models or []:
+            if not isinstance(raw, str) or not raw:
+                continue
+            row_facts = {
+                k: v for k, v in (facts.get(raw) or {}).items()
+                if not (k in {"capabilities", "output_modalities"} and not v)
+            }
+            metadata = {
+                **previous.get(_stored_spelling(slug, raw), {}),
+                **row_facts,
+            }
+            if implied.get(raw):
+                metadata["capabilities"] = sorted(set(metadata.get("capabilities") or []) | {implied[raw]})
+            discovered[_stored_spelling(slug, raw)] = metadata
+        remember(slug, discovered)
     _LIVE_MODEL_CACHE[cache_key] = (now, models)
     return models
 
@@ -576,10 +595,13 @@ async def model_options(params: dict, *, agent_loop_factory: "AgentLoopFactory |
         # it builds no provider rows and leaves the warm to the full read.
         warm_catalog_in_background()
         entries = await _entries_off_loop(current_provider)
+    from raven.providers.decision_protocols import list_decision_protocols
+
     return {
         "model": current_model,
         "provider": current_provider or "",
         "providers": entries,
+        **({"decision_protocols": list_decision_protocols()} if parsed.include_providers else {}),
     }
 
 
@@ -922,6 +944,7 @@ def _served_rows(slug: str, probe: dict[str, Any]) -> tuple[dict[str, dict[str, 
         rows[key] = entry
         if key in live_keys:
             served[stored] = {
+                **raw_facts,
                 "kind": kind,
                 "capabilities": sorted(set(vendor_caps)),
                 "output_modalities": list(raw_outputs),

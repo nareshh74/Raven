@@ -59,6 +59,90 @@ def _entry(result: dict, slug: str) -> dict:
     raise AssertionError(f"provider {slug!r} not in options result")
 
 
+async def test_live_discovery_preserves_metadata_and_obeys_capability_and_ttl(fake_home, monkeypatch):
+    from types import SimpleNamespace
+    from raven.providers.served_models import recall
+
+    calls = []
+
+    def probe(slug, *, timeout_s, section_snapshot):
+        calls.append((slug, timeout_s))
+        return {
+            "ok": True, "model_ids": ["renamed"],
+            "model_facts": {"renamed": {
+                "kind": "embedding", "decision": {"protocol_id": "criteria_map"},
+            }},
+        }
+
+    monkeypatch.setattr("raven.config.update_providers.test_provider", probe)
+    monkeypatch.setattr(model_module, "find_by_name", lambda _: SimpleNamespace(supports_models_endpoint=True))
+    monkeypatch.setattr(model_module, "_stored_spelling", lambda slug, model: model)
+    monkeypatch.setattr(model_module, "_LIVE_MODEL_CACHE", {})
+    now = [100.0]
+    monkeypatch.setattr(model_module.time, "monotonic", lambda: now[0])
+    from raven.config.schema import ProviderConfig
+    section = ProviderConfig(api_base="http://127.0.0.1:20128/v1", supports_models_endpoint=True)
+    assert model_module._runtime_models("arbitrary", configured=True, section=section) == ("renamed",)
+    assert recall("arbitrary")["renamed"]["kind"] == "embedding"
+    assert recall("arbitrary")["renamed"]["decision"]["protocol_id"] == "criteria_map"
+    now[0] += 14.0
+    model_module._runtime_models("arbitrary", configured=True, section=section)
+    assert calls == [("arbitrary", 2)]
+    now[0] += 2.0
+    model_module._runtime_models("arbitrary", configured=True, section=section)
+    assert calls == [("arbitrary", 2), ("arbitrary", 2)]
+    section.supports_models_endpoint = False
+    assert model_module._runtime_models("arbitrary", configured=True, section=section) == ()
+
+
+async def test_live_discovery_cache_is_scoped_to_account_and_config_home(fake_home, monkeypatch):
+    from types import SimpleNamespace
+    from raven.config.schema import ProviderConfig
+
+    calls = []
+
+    def probe(slug, *, timeout_s, section_snapshot):
+        calls.append(section_snapshot["api_key"])
+        return {"ok": True, "model_ids": [f"private-{section_snapshot['api_key']}"]}
+
+    monkeypatch.setattr("raven.config.update_providers.test_provider", probe)
+    monkeypatch.setattr(model_module, "find_by_name", lambda _: SimpleNamespace(supports_models_endpoint=True))
+    monkeypatch.setattr(model_module, "_stored_spelling", lambda slug, model: model)
+    monkeypatch.setattr(model_module, "_LIVE_MODEL_CACHE", {})
+    section = ProviderConfig(api_base="https://gateway.invalid/v1", api_key="account-a")
+    assert model_module._runtime_models("arbitrary", configured=True, section=section) == ("private-account-a",)
+    section.api_key = "account-b"
+    assert model_module._runtime_models("arbitrary", configured=True, section=section) == ("private-account-b",)
+    other_home = fake_home / "another-home"
+    monkeypatch.setattr(Path, "home", lambda: other_home)
+    assert model_module._runtime_models("arbitrary", configured=True, section=section) == ("private-account-b",)
+    assert calls == ["account-a", "account-b", "account-b"]
+
+
+async def test_live_discovery_partial_metadata_preserves_previous_facts(fake_home, monkeypatch):
+    from types import SimpleNamespace
+    from raven.config.schema import ProviderConfig
+    from raven.config.update_providers import _model_facts_from_payload
+    from raven.providers.served_models import recall, remember
+
+    remember("arbitrary", {"renamed": {
+        "capabilities": ["reasoning", "vision"], "output_modalities": ["text"],
+    }})
+    facts = _model_facts_from_payload({"data": [{
+        "id": "renamed", "decision": {"protocolId": "criteria_map"},
+    }]})
+    monkeypatch.setattr("raven.config.update_providers.test_provider", lambda *args, **kwargs: {
+        "ok": True, "model_ids": ["renamed"], "model_facts": facts,
+    })
+    monkeypatch.setattr(model_module, "find_by_name", lambda _: SimpleNamespace(supports_models_endpoint=True))
+    monkeypatch.setattr(model_module, "_stored_spelling", lambda slug, model: model)
+    monkeypatch.setattr(model_module, "_LIVE_MODEL_CACHE", {})
+    model_module._runtime_models("arbitrary", configured=True, section=ProviderConfig())
+    refreshed = recall("arbitrary")["renamed"]
+    assert refreshed["capabilities"] == ["reasoning", "vision"]
+    assert refreshed["output_modalities"] == ["text"]
+
+
 # ----------------------------------------------------------------------------
 # model.options
 # ----------------------------------------------------------------------------
@@ -1136,8 +1220,8 @@ async def test_options_lists_the_codex_models_the_account_reports(
     LiteLLM's table carries slugs an account is not entitled to, which is why this
     row used to offer nothing at all."""
     monkeypatch.setattr(
-        "raven.providers.codex_catalog.account_models",
-        lambda: ("gpt-5.6-sol", "gpt-5.4"),
+        "raven.config.update_providers.test_provider",
+        lambda *args, **kwargs: {"ok": True, "model_ids": ["gpt-5.6-sol", "gpt-5.4"]},
     )
     # Asked only of an account there is one for, so the row has to be signed in
     # before the catalogue is reached at all.
@@ -1168,7 +1252,7 @@ async def test_the_picker_offers_what_the_vendor_last_named_with_its_kind(
 
     monkeypatch.setattr("raven.config.update_providers.test_provider", probe)
     before = _entry(await model_options({}), "openrouter")
-    assert not any("brand-new-model" in m for m in before["models"])
+    assert any("brand-new-model" in m for m in before["models"])
 
     await model_fetch_models({"slug": "openrouter", "verify": True})
     after = _entry(await model_options({}), "openrouter")
@@ -1178,6 +1262,8 @@ async def test_the_picker_offers_what_the_vendor_last_named_with_its_kind(
     assert after["model_labels"][new]["kind"] == "text"
 
     await model_disconnect({"slug": "openrouter"})
+    monkeypatch.setattr("raven.config.update_providers.test_provider", lambda *args, **kwargs: {"ok": False})
+    model_module._LIVE_MODEL_CACHE.clear()
     _write_config(fake_home, {"providers": {"openrouter": {"apiKey": "sk-or"}}})
     again = _entry(await model_options({}), "openrouter")
     assert not any("brand-new-model" in m for m in again["models"])
@@ -1389,7 +1475,7 @@ async def test_options_lists_lm_studio_models_from_the_local_server(
     )
     calls: list[tuple[str, int]] = []
 
-    def probe(name: str, *, timeout_s: int) -> dict:
+    def probe(name: str, *, timeout_s: int, section_snapshot: dict) -> dict:
         calls.append((name, timeout_s))
         return {"ok": True, "model_ids": ["qwen3-8b", "publisher/vision-model"]}
 
@@ -1444,7 +1530,7 @@ def test_the_live_model_cache_is_asked_again_once_it_has_expired(
     )
     calls: list[tuple[str, int]] = []
 
-    def probe(name: str, *, timeout_s: int) -> dict:
+    def probe(name: str, *, timeout_s: int, section_snapshot: dict) -> dict:
         calls.append((name, timeout_s))
         return {"ok": True, "model_ids": ["qwen3-8b"]}
 

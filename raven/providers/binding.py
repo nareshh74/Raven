@@ -25,11 +25,13 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Iterator
 
 if TYPE_CHECKING:
     from raven.providers.base import LLMProvider
+    from raven.providers.pool import ProviderPool
+    from raven.config.raven import DecisionModelConfig
 
 
 @dataclass(frozen=True)
@@ -50,6 +52,9 @@ class ModelBinding:
     #: number meant it for whatever they run, so it outranks the model's own
     #: size here exactly as it does in ``rates.effective_context_window``.
     configured_window: int | None = None
+    provider_name: str | None = None
+    pool: ProviderPool | None = field(default=None, repr=False, compare=False)
+    decision_config: DecisionModelConfig | None = field(default=None, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         if not self.model:
