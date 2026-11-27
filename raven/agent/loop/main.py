@@ -592,6 +592,7 @@ class AgentLoop(TurnPathMixin, WiringMixin, McpGlueMixin, OrganGlueMixin):
             long_run_notice_seconds=subagents.long_run_notice_seconds,
             control_reachable=self.subagent_control_reachable,
             live_config=self._live_config,
+            max_iterations_fallback=lambda: self._default_max_iterations,
         )
         # Reads the live direct chats through a lambda for the reason the identity
         # segment does: the manager is rebuilt on a hot config apply.

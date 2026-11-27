@@ -567,6 +567,20 @@ def test_editable_checkout_reads_the_directory_from_pep_610_metadata(
     assert upgrade_commands.editable_checkout() == checkout
 
 
+def test_editable_checkout_reads_a_url_with_a_mixed_case_localhost(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Host names are case-insensitive, so ``LOCALHOST`` is this machine."""
+    checkout = tmp_path / "source checkout"
+    distribution = Mock()
+    distribution.read_text.return_value = json.dumps(
+        {"url": checkout.as_uri().replace("://", "://LOCALHOST", 1), "dir_info": {"editable": True}}
+    )
+    monkeypatch.setattr(upgrade_commands.metadata, "distribution", lambda name: distribution)
+
+    assert upgrade_commands.editable_checkout() == checkout
+
+
 @pytest.mark.parametrize("url", ["https://example.com/source", "file://remote/source", "file:relative"])
 def test_editable_checkout_refuses_a_url_that_is_not_a_local_directory(
     monkeypatch: pytest.MonkeyPatch, url: str
@@ -878,9 +892,13 @@ REINSTALL = ["--reinstall-package", "raven"]
 FORCE = ["--force"]
 
 
-def _load_upgrade_helper_namespace() -> dict[str, object]:
+def _load_upgrade_helper_namespace(restart_probe_s: int | None = 0) -> dict[str, object]:
     namespace: dict[str, object] = {"__name__": "raven_upgrade_helper_test"}
     exec(upgrade_commands._UPGRADE_HELPER_SOURCE, namespace)
+    # The watch after a relaunch is wall-clock time no test is about; the
+    # tests that are about it keep the helper's own bound.
+    if restart_probe_s is not None:
+        namespace["RESTART_PROBE_S"] = restart_probe_s
     return namespace
 
 
@@ -1267,7 +1285,12 @@ class TestTheHelperAnswersOnThePagePort:
 
         monkeypatch.setattr(subprocess, "run", run)
         free_at_relaunch: list[bool] = []
-        monkeypatch.setattr(subprocess, "Popen", lambda *_a, **_k: free_at_relaunch.append(_port_is_free(port)))
+
+        def popen(*_args, **_kwargs):
+            free_at_relaunch.append(_port_is_free(port))
+            return Mock()
+
+        monkeypatch.setattr(subprocess, "Popen", popen)
 
         assert self._helper()(["/usr/bin/uv", WHEEL_URL, "0.1.3", "0.1.4", "4242", self.RELAUNCH]) == 0
 
@@ -1297,6 +1320,24 @@ class TestTheHelperAnswersOnThePagePort:
         self._helper()(["/usr/bin/uv", WHEEL_URL, "0.1.3", "0.1.4", "4242", self.RELAUNCH])
 
         assert seen == [421]
+
+    def test_a_mixed_case_localhost_host_header_is_still_the_page(
+        self, port: int, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Host names are case-insensitive, so ``LOCALHOST`` is the page's own
+        origin too."""
+        seen: list[int] = []
+
+        def run(_argv, check, env):
+            seen.append(_get(port, "/upgrade/status", host=f"LOCALHOST:{port}")[0])
+            return Mock(returncode=0)
+
+        monkeypatch.setattr(subprocess, "run", run)
+        monkeypatch.setattr(subprocess, "Popen", Mock())
+
+        self._helper()(["/usr/bin/uv", WHEEL_URL, "0.1.3", "0.1.4", "4242", self.RELAUNCH])
+
+        assert seen == [200]
 
     def test_a_failure_is_held_until_the_page_has_read_it(self, port: int, monkeypatch: pytest.MonkeyPatch) -> None:
         """Otherwise the old Raven comes straight back and the page reloads onto
@@ -1767,6 +1808,70 @@ def test_upgrade_helper_reports_a_failed_restart_after_a_good_install(
 
     assert status == 1
     assert "spawn denied" in capsys.readouterr().err
+
+
+def test_upgrade_helper_reports_a_restart_that_exits_at_once(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The process it brings back is detached, so an exit here is the only
+    account anyone gets: a launch refused for its working directory -- a
+    launchd job in `/`, a systemd unit in the home directory -- is gone before
+    the page could reconnect, and the terminal running the upgrade is the
+    last reader."""
+    monkeypatch.setattr(subprocess, "run", Mock(return_value=Mock(returncode=0)))
+    dropped = Mock()
+    dropped.wait.return_value = 1
+    monkeypatch.setattr(subprocess, "Popen", Mock(return_value=dropped))
+    helper_main = _load_upgrade_helper()
+    helper_main.__globals__["wait_for_parent"] = Mock(return_value=0)
+
+    status = helper_main(["/usr/bin/uv", WHEEL_URL, "0.1.3", "0.1.4", "4321", RELAUNCH])
+
+    assert status == 1
+    err = capsys.readouterr().err
+    assert "exited with status 1 while restarting" in err
+    assert "project directory" in err
+
+
+def test_upgrade_helper_calls_a_restart_that_stays_up_good(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(subprocess, "run", Mock(return_value=Mock(returncode=0)))
+    serving = Mock()
+    serving.wait.side_effect = subprocess.TimeoutExpired("raven", 1)
+    monkeypatch.setattr(subprocess, "Popen", Mock(return_value=serving))
+    helper_main = _load_upgrade_helper()
+    helper_main.__globals__["wait_for_parent"] = Mock(return_value=0)
+
+    status = helper_main(["/usr/bin/uv", WHEEL_URL, "0.1.3", "0.1.4", "4321", RELAUNCH])
+
+    out = capsys.readouterr()
+    assert status == 0
+    assert "Raven restarted." in out.out
+    assert "while restarting" not in out.err
+
+
+def test_upgrade_helper_probes_the_relaunch_for_the_shipped_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A relaunch that stays up is called good only after the probe window, and
+    this is the only place the shipped length of that window is asserted. The
+    timeout literal is deliberate: reading it back from the helper would let the
+    value change without a test noticing, which is what this test exists to
+    prevent."""
+    monkeypatch.setattr(subprocess, "run", Mock(return_value=Mock(returncode=0)))
+    serving = Mock()
+    serving.wait.side_effect = subprocess.TimeoutExpired("raven", 1)
+    monkeypatch.setattr(subprocess, "Popen", Mock(return_value=serving))
+    helper_main = _load_upgrade_helper_namespace(restart_probe_s=None)["main"]
+    helper_main.__globals__["wait_for_parent"] = Mock(return_value=0)
+
+    status = helper_main(["/usr/bin/uv", WHEEL_URL, "0.1.3", "0.1.4", "4321", RELAUNCH])
+
+    assert status == 0
+    serving.wait.assert_called_once_with(timeout=4)
 
 
 def test_parent_wait_outlasts_a_slow_shutdown(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2865,7 +2970,12 @@ class TestTheHelperFallsBackToAMirror:
         monkeypatch.setattr(subprocess, "run", run)
         helper_main, popen = _helper_with_relaunch(monkeypatch)
         helper_main.__globals__["use_system_ca"] = lambda: None
-        popen.side_effect = lambda *_a, **_kw: relaunched.append(dict(os.environ))
+
+        def relaunch(*_argv, **_kwargs):
+            relaunched.append(dict(os.environ))
+            return Mock()
+
+        popen.side_effect = relaunch
 
         assert helper_main(["/usr/bin/uv", WHEEL_URL, "0.1.3", "0.1.4", "4321", RELAUNCH]) == 0
         return uv, relaunched
@@ -3284,7 +3394,12 @@ class TestTheHelperVerifiesAgainstTheSystemStore:
         helper_main, popen = _helper_with_relaunch(monkeypatch)
         # This process's ssl module is not the helper's to change.
         helper_main.__globals__["use_system_ca"] = lambda: None
-        popen.side_effect = lambda *_a, **_kw: relaunched.append(dict(os.environ))
+
+        def relaunch(*_argv, **_kwargs):
+            relaunched.append(dict(os.environ))
+            return Mock()
+
+        popen.side_effect = relaunch
 
         assert helper_main([uv_path, WHEEL_URL, "0.1.3", "0.1.4", "4321", RELAUNCH]) == 0
         return uv, relaunched

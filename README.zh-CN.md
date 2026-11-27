@@ -205,10 +205,10 @@ Raven 采用模块化架构，专为 harness 自进化与子 Agent 创建而设�
 
 ## ❯❯ 连接第三方 Agent
 
-Raven 可以通过 ACP、CLI 或兼容 OpenAI 的 API 接入并编排 Agent，并内置 15 个**第三方 Agent** 预设和 9 个经 **Mirasim** 路由的预设，简化接入配置、任务委派以及在共享工作流中的协作。欢迎在 Raven 的统一界面中体验这些 Agent！
+Raven 可以通过 ACP、CLI 或兼容 OpenAI 的 API 接入并编排 Agent，并内置 16 个**第三方 Agent** 预设和 9 个经 **Mirasim** 路由的预设，简化接入配置、任务委派以及在共享工作流中的协作。欢迎在 Raven 的统一界面中体验这些 Agent！
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/acd47004-c0b8-4079-87f0-9b77c6731e89" width="80%" alt="Third-party agents in Raven's Agent Hub">
+  <img src="https://github.com/user-attachments/assets/d5c7224a-2b95-4093-8412-a70e3239a0d3" width="80%" alt="Third-party agents in Raven's Agent Hub">
 </p>
 
 名册还包含通过原生 ACP server 接入的 **MiniMax Code**（`mcode acp`）、通过自带 ACP profile 接入的 **DSH**（DeepSeek Harness，`dsh --profile acp`），以及 9 个经 **Mirasim** 路由的预设（如 `Claude Code-Mirasim`），它们让同一个 Agent 跑在 Mirasim 的账号和模型路由上。
@@ -306,16 +306,22 @@ raven web
 该命令会在浏览器中打开 WebUI，并让 Raven 在后台持续运行；执行 `raven web --stop` 即可停止后台服务。
 
 <p align="center">
-  <a href="https://github.com/user-attachments/assets/6cc51f4e-3eac-4f3a-9471-fd1c3e322efd"><img src="https://github.com/user-attachments/assets/6cc51f4e-3eac-4f3a-9471-fd1c3e322efd" alt="Raven WebUI new session page" width="90%"></a>
+  <a href="https://github.com/user-attachments/assets/65bc6204-214b-4b9e-9cc8-067974f09ebf"><img src="https://github.com/user-attachments/assets/65bc6204-214b-4b9e-9cc8-067974f09ebf" alt="Raven WebUI conversation with the tasks tab open" width="90%"></a>
 </p>
 
-<p align="center"><em>新会话：一个输入框，技能、Playbook、知识库与记忆一键可达。</em></p>
+<p align="center"><em>会话：委派出去的工作在对话旁的任务栏里按事项跟踪，需要你回答的问题也在这里。</em></p>
 
 <p align="center">
-  <a href="https://github.com/user-attachments/assets/88791886-59db-41e9-a8b6-563cc39e627e"><img src="https://github.com/user-attachments/assets/88791886-59db-41e9-a8b6-563cc39e627e" alt="Raven WebUI subagents page" width="90%"></a>
+  <a href="https://github.com/user-attachments/assets/68736431-2250-4639-9b1b-56700c99cade"><img src="https://github.com/user-attachments/assets/68736431-2250-4639-9b1b-56700c99cade" alt="Raven WebUI Task Board page" width="90%"></a>
 </p>
 
-<p align="center"><em>子 Agent：所有已接入的 Agent，无论内置还是第三方，都汇集在同一份名册中。</em></p>
+<p align="center"><em>任务看板页：所有会话的任务汇总在一处，按需要你回答、运行中、闲置、已完成分栏。</em></p>
+
+<p align="center">
+  <a href="https://github.com/user-attachments/assets/802524d7-6aec-43b0-b6b6-d93d8b456694"><img src="https://github.com/user-attachments/assets/802524d7-6aec-43b0-b6b6-d93d8b456694" alt="Raven WebUI Connectors page, Agents tab" width="90%"></a>
+</p>
+
+<p align="center"><em>连接：Raven 能委派的所有智能体，内置与第三方一视同仁，并标明是否已接入。</em></p>
 
 ## ❯❯ EverMind 生态
 
