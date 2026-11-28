@@ -526,6 +526,23 @@ describe('the model picker, choosing', () => {
 })
 
 describe('the model picker, closing', () => {
+  it.each(['.model-autonomy', '.model-autonomy-turn'])('closes on escape while a %s radio has focus', async (selector) => {
+    install()
+    vi.mocked(autonomy.load).mockRestore()
+    setGateway(new FixtureTransport({
+      'config.get': { config: { 'agents.defaults.autonomyMode': 'balanced' } },
+    }))
+    mount()
+    await act(async () => { store.open(null) })
+    const radio = document.querySelector<HTMLButtonElement>(`${selector} [role="radio"]`)!
+    radio.focus()
+    expect(document.activeElement).toBe(radio)
+    fireEvent.keyDown(radio, { key: 'Escape', keyCode: 229 })
+    expect(pick()).not.toBeNull()
+    fireEvent.keyDown(radio, { key: 'Escape' })
+    expect(pick()).toBeNull()
+  })
+
   it('closes on escape', () => {
     install()
     mount()

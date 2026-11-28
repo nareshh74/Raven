@@ -356,8 +356,18 @@ function Pick(): JSX.Element {
       if (target.closest('.mpick') || host.contains(target)) return
       store.close()
     }
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== 'Escape' || e.isComposing || e.keyCode === 229) return
+      e.preventDefault()
+      e.stopPropagation()
+      store.close()
+    }
     document.addEventListener('pointerdown', onDown, true)
-    return () => document.removeEventListener('pointerdown', onDown, true)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('pointerdown', onDown, true)
+      document.removeEventListener('keydown', onKey)
+    }
   }, [host])
 
   /* Scroll the chosen model into view once it is drawn, and only when nothing is
