@@ -66,6 +66,7 @@ __all__ = [
     "exec_timeout",
     "memory_top_k",
     "personalization_enabled",
+    "prevent_sleep_enabled",
     "reasoning_effort",
     "web_providers",
     "max_tool_iterations",
@@ -625,6 +626,15 @@ def personalization_enabled(live: LiveConfig) -> bool | None:
         if isinstance(value, bool):
             return value
     return None
+
+
+def prevent_sleep_enabled(live: LiveConfig) -> bool:
+    """``runtime.preventSleep`` as the file has it, defaulting to False."""
+    for key in ("runtime.preventSleep", "runtime.prevent_sleep"):
+        value = live.get(key)
+        if isinstance(value, bool):
+            return value
+    return False
 
 
 def memory_top_k(live: LiveConfig) -> int | None:

@@ -1683,3 +1683,24 @@ class TestDecisionModelLiveReaders:
 
         assert decision_for_skills(live) is False
         assert decision_for_specialists(live) is False
+
+
+class TestPreventSleepEnabled:
+    def test_defaults_false_and_reads_both_spellings(self, tmp_path: Path) -> None:
+        from raven.config.live import prevent_sleep_enabled
+
+        path = tmp_path / "config.json"
+        live = LiveConfig(path)
+        assert prevent_sleep_enabled(live) is False
+
+        _write(path, {"runtime": {"preventSleep": True}})
+        assert prevent_sleep_enabled(live) is True
+
+        _write(path, {"runtime": {"preventSleep": False}})
+        assert prevent_sleep_enabled(live) is False
+
+        _write(path, {"runtime": {"prevent_sleep": True}})
+        assert prevent_sleep_enabled(live) is True
+
+        _write(path, {"runtime": {"preventSleep": "yes"}})
+        assert prevent_sleep_enabled(live) is False

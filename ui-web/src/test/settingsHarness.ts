@@ -102,6 +102,7 @@ export function snap(over: Partial<SettingsSnapshot> = {}): SettingsSnapshot {
       tools: { disabledTools: ['image_generate', 'write_file'], web: { search: { provider: 'serper' } } },
       skillForge: { blocklist: ['sql-style'] },
       sessions: { autoArchiveAfterDays: null },
+      runtime: { preventSleep: false },
       providers: { anthropic: { modelOverlay: { 'claude-opus-4-5': { label: 'Opus', description: 'the big one' } } } },
     },
     configPath: '/home/me/.raven/config.json',

@@ -16,10 +16,15 @@
    row back rather than writing the feature again. */
 import { code as langCode, t } from '../../../i18n/t'
 import * as look from '../../../state/look'
-import { Seg } from '../Fields'
+import { Seg, Switch } from '../Fields'
 import * as store from '../store'
 
 import type { JSX, ReactNode } from 'react'
+
+function preventSleepOn(raw: Record<string, unknown>): boolean {
+  const runtime = raw.runtime as { preventSleep?: boolean; prevent_sleep?: boolean } | undefined
+  return !!(runtime && (runtime.preventSleep ?? runtime.prevent_sleep))
+}
 
 type Theme = 'system' | 'light' | 'dark'
 
@@ -29,7 +34,7 @@ const SHOT = { light: 'settings-shot', dark: 'settings-shot settings-shot-dark' 
 
 /* One setting: its name and a line about it on the left, the control on the
    right, or -- for the theme cards -- under both. No card around the list: the
-   page is two settings, and the whitespace between them is the division. */
+   page is three settings, and the whitespace between them is the division. */
 function Setting({ title, sub, below, children }: {
   title: string
   sub: string
@@ -67,6 +72,9 @@ function Preview({ theme }: { theme: Theme }): JSX.Element {
 
 export function General(): JSX.Element {
   const theme = look.get().theme as Theme
+  const s = store.get()
+  const raw = s.snap ? s.snap.raw : {}
+  const preventSleep = preventSleepOn(raw)
   return (
     <div className="settings-genlist">
       <Setting title={t('gui.settings.general.language')} sub={t('gui.settings.general.language_sub')}>
@@ -74,6 +82,13 @@ export function General(): JSX.Element {
           opts={[['zh', t('gui.settings.general.lang_zh')], ['en', t('gui.settings.general.lang_en')]]}
           value={langCode}
           onPick={(v) => store.source().setLang(v)}
+        />
+      </Setting>
+      <Setting title={t('gui.settings.general.prevent_sleep')} sub={t('gui.settings.general.prevent_sleep_sub')}>
+        <Switch
+          on={preventSleep}
+          label={t('gui.settings.general.prevent_sleep')}
+          onChange={(on) => { void store.write('runtime.preventSleep', on, { remount: false }) }}
         />
       </Setting>
       <Setting title={t('gui.settings.general.theme')} sub={t('gui.settings.general.theme_sub')} below>

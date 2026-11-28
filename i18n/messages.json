@@ -8677,6 +8677,14 @@
       "en": "The browser refused notifications",
       "zh": "浏览器拒绝了通知权限"
     },
+    "gui.settings.general.prevent_sleep": {
+      "en": "Keep system and screen awake",
+      "zh": "任务运行时保持系统和屏幕唤醒"
+    },
+    "gui.settings.general.prevent_sleep_sub": {
+      "en": "Prevent system and display sleep while Raven has at least one active task.",
+      "zh": "当 Raven 有至少一个运行中的任务时，防止系统和屏幕进入休眠。"
+    },
     "gui.autonomy.title": {
       "en": "Autonomy",
       "zh": "自主程度"

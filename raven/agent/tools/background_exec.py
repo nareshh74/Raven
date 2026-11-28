@@ -32,6 +32,7 @@ import os
 import shlex
 import signal
 import subprocess
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -150,6 +151,53 @@ def _new_task_id() -> str:
     return f"bg-{int(time.time() * 1000):x}-{os.getpid():x}-{next(_TASK_IDS):x}"
 
 
+def _sleep_token(task_id: str) -> str:
+    return f"bg_exec:{task_id}"
+
+
+def _release_sleep_token(task_id: str) -> None:
+    from raven.utils.sleep_guard import get_sleep_guard
+
+    get_sleep_guard().release(_sleep_token(task_id))
+
+
+def _watch_sleep_proc(task_id: str, proc: subprocess.Popen) -> None:
+    from raven.utils.sleep_guard import get_sleep_guard
+
+    guard = get_sleep_guard()
+    guard.sync_from_config()
+    guard.acquire(_sleep_token(task_id))
+
+    def _wait() -> None:
+        try:
+            proc.wait()
+        except Exception:  # noqa: BLE001
+            pass
+        finally:
+            guard.release(_sleep_token(task_id))
+
+    threading.Thread(target=_wait, name=f"raven-bg-wait-{task_id}", daemon=True).start()
+
+
+def _watch_sleep_pid(task_id: str, pid: int) -> None:
+    from raven.utils.sleep_guard import get_sleep_guard
+
+    guard = get_sleep_guard()
+    guard.sync_from_config()
+    guard.acquire(_sleep_token(task_id))
+
+    def _poll() -> None:
+        try:
+            while _alive(task_id, pid):
+                time.sleep(0.5)
+        except Exception:  # noqa: BLE001
+            pass
+        finally:
+            guard.release(_sleep_token(task_id))
+
+    threading.Thread(target=_poll, name=f"raven-bg-pid-{task_id}", daemon=True).start()
+
+
 def _reap_own() -> None:
     for task_id in _OWN:
         reap(task_id)
@@ -189,6 +237,7 @@ def start(
         handle.close()
     _OWN.append(task_id)
     _PROCS[task_id] = proc
+    _watch_sleep_proc(task_id, proc)
     task = BackgroundTask(
         task_id,
         command,
@@ -246,6 +295,7 @@ def adopt(
     )
     _OWN.append(task_id)
     _record(task)
+    _watch_sleep_pid(task_id, pid)
     return task
 
 
@@ -353,9 +403,11 @@ def reap(task_id: str, *, force: bool = False) -> bool:
     """Kill a task's whole process group if it is still alive; return True if it was."""
     data = status(task_id)
     if not data:
+        _release_sleep_token(task_id)
         return False
     pid = int(data.get("pid") or -1)
     if not _alive(task_id, pid):
+        _release_sleep_token(task_id)
         return False
     sig = getattr(signal, "SIGKILL", signal.SIGTERM) if force else signal.SIGTERM
     if hasattr(os, "killpg"):
@@ -365,11 +417,13 @@ def reap(task_id: str, *, force: bool = False) -> bool:
         try:
             os.killpg(pid, sig)
         except (ProcessLookupError, PermissionError, OSError):
+            _release_sleep_token(task_id)
             return False
         return True
     try:
         os.kill(pid, sig)
     except OSError:
+        _release_sleep_token(task_id)
         return False
     return True
 
