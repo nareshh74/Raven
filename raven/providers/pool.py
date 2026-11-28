@@ -18,11 +18,14 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from loguru import logger
+import httpx
 
 from raven.providers.binding import ModelBinding
 
 if TYPE_CHECKING:
     from raven.config.schema import Config
+    from raven.providers.base import LLMProvider
+    from raven.providers.decision_protocols import DecisionCapability, DecisionTransportContext
 
 
 def live_pin_resolver(
@@ -83,6 +86,7 @@ class ProviderPool:
         self._supplier: "Callable[[], Config]" = config if callable(config) else (lambda: config)
         self._cache: dict[tuple[str, str], ModelBinding] = {}
         self._cache_key: str | None = None
+        self._decision_clients: dict[bool, httpx.AsyncClient] = {}
 
     @property
     def config(self) -> "Config":
@@ -146,7 +150,7 @@ class ProviderPool:
         # The pin travels with the binding rather than being read where the
         # window is used: a session on another model still owes the user the
         # number they pinned.
-        binding = ModelBinding(make_provider(cfg), model, cfg.agents.defaults.context_window_tokens)
+        binding = ModelBinding(make_provider(cfg), model, cfg.agents.defaults.context_window_tokens, resolved, self)
         cache[key] = binding
         return binding
 
@@ -222,6 +226,64 @@ class ProviderPool:
 
         spec = find_by_model(model)
         return spec.name if spec is not None else "auto"
+
+    def decision_capability(self, binding: ModelBinding) -> DecisionCapability:
+        from raven.providers.decision_protocols import resolve_decision_capability
+        from raven.providers.registry import find_by_name
+        from raven.providers.served_models import recall
+
+        section = self.config.providers.get(binding.provider_name or "")
+        spec = find_by_name(binding.provider_name or "")
+        return resolve_decision_capability(binding.model, binding.provider_name, section, spec, recall(binding.provider_name or ""))
+
+    async def decision_provider(self, binding: ModelBinding) -> LLMProvider:
+        """Resolve wrappers before inspecting a decision provider's wire support."""
+        import asyncio
+
+        provider = binding.provider
+        if hasattr(provider, "_built"):
+            provider = await asyncio.to_thread(provider._built)
+        if hasattr(provider, "_pick"):
+            provider = provider._pick(binding.model)
+        if getattr(provider, "_inners", None):
+            provider = provider._inners[provider._healthy_order()[0]]
+        return provider
+
+    async def decision_transport(self, binding: ModelBinding) -> DecisionTransportContext:
+        from raven.providers.decision_protocols import DecisionTransportContext
+        from raven.providers.registry import find_by_name
+        from raven.providers.wire import wire_model
+
+        provider = await self.decision_provider(binding)
+        section = self.config.providers.get(binding.provider_name or "")
+        spec = find_by_name(binding.provider_name or "")
+        base, headers = await provider.decision_credentials()
+        base = base or getattr(section, "api_base", None) or (
+            getattr(spec, "decision_api_base", "") or getattr(spec, "default_api_base", "")
+        )
+        verify = getattr(provider, "tls_verify", getattr(section, "tls_verify", True))
+        client = self._decision_clients.get(verify)
+        if client is None or client.is_closed:
+            client = httpx.AsyncClient(verify=verify, follow_redirects=False, limits=httpx.Limits(
+                max_connections=4, max_keepalive_connections=4,
+            ))
+            self._decision_clients[verify] = client
+        capability = self.decision_capability(binding)
+        if capability.auth_header and capability.auth_header != "Authorization":
+            token = headers.pop("Authorization", "").removeprefix("Bearer ")
+            if token:
+                headers[capability.auth_header] = token
+        cfg = binding.decision_config
+        path = (cfg.endpoint_path if cfg else None) or capability.endpoint_path
+        return DecisionTransportContext(
+            client, base, headers, path,
+            wire_model(binding.model, client_provider=binding.provider_name) if binding.provider_name else binding.model,
+        )
+
+    async def aclose(self) -> None:
+        for client in self._decision_clients.values():
+            await client.aclose()
+        self._decision_clients.clear()
 
     def _has_credentials(self, provider_name: str, model: str) -> bool:
         """Is there a usable section for this vendor, or only a placeholder?

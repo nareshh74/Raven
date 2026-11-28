@@ -2545,6 +2545,7 @@ class ModelOptionsResult(_Strict):
     model: str
     provider: str
     providers: list[ModelOptionProvider]
+    decision_protocols: list[dict[str, JsonValue]] = Field(default_factory=list)
 
 
 class ModelSetProtocolParams(_Strict):
@@ -4922,6 +4923,7 @@ class PictureSearchStatus(_Strict):
 
 
 class SettingsGetResult(_Strict):
+    decisionModel: dict[str, JsonValue] = Field(default_factory=dict)
     settings: dict[str, JsonValue] = Field(..., description="Raw config.json with secret-looking values masked.")
     config_path: str
     raven_version: str
@@ -4950,6 +4952,7 @@ class SettingsSetResult(_Strict):
     applied: bool
     previous: JsonValue
     warning: str | None = None
+    decisionModel: dict[str, JsonValue] | None = None
 
 
 class ApiUsageTotals(_Strict):

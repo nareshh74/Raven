@@ -41,6 +41,7 @@ import type { AuthField, ProviderOp, SettingsSnapshot, SettingsSource, SkillDeta
    resolves both. One level per dot. Handed to the island inside its snapshot,
    which is the only reader. */
 let RAW: Record<string, unknown> = {}
+let decisionModel: Record<string, unknown> = {}
 
 let configPathLive = '~/.raven/config.json'
 let skillHub = { on: false }
@@ -144,6 +145,7 @@ export const savePermMode = (mode: string, sid: string): Promise<boolean> =>
 
 export async function loadSettings(): Promise<void> {
   const r = await gateway().call('settings.get', {})
+  decisionModel = r.decisionModel ?? {}
   RAW = (r.settings || {}) as Record<string, unknown>
   configPathLive = r.config_path || configPathLive
   skillHub = { on: r.skill_hub_on === true }
@@ -179,7 +181,7 @@ export async function loadSettingsWithProviders(): Promise<void> {
 }
 
 export const settingsSnapshot = (): SettingsSnapshot => ({
-  raw: RAW, configPath: configPathLive, skillHub, pictureSearch, everos: everosLive, everosCloud: everosCloudLive,
+  raw: RAW, decisionModel, configPath: configPathLive, skillHub, pictureSearch, everos: everosLive, everosCloud: everosCloudLive,
   // Both default-scoped on purpose: the settings page describes what new
   // conversations start on, so pairing the default model with the visible
   // session's provider badged the wrong row whenever the two scopes differ.

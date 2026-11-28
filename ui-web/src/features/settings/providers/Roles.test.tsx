@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { resetSources, setSources } from '../../../state/sources'
 import { install, modelSource, mount, snap, source as settingsSource } from '../../../test/settingsHarness'
 import * as store from '../store'
-import { ROLES, isSystem1DecisionModel, everosLocked, followsChat, roleProviders, roleValue, rolesUsing } from './Roles'
+import { ROLES, everosLocked, followsChat, roleProviders, roleValue, rolesUsing } from './Roles'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -649,7 +649,7 @@ describe('another memory backend', () => {
 const withDecision = (): ReturnType<typeof snap> => {
   const data = snap()
   data.providers = data.providers.map((p) => (p.id === 'anthropic'
-    ? { ...p, models: [...p.models, 'microsoft-decision-1', 'claude-haiku-4-5', 'gpt-4o-mini', 'gemini-2.5-flash'], configured: [...(p.configured ?? []), 'microsoft-decision-1', 'claude-haiku-4-5', 'gpt-4o-mini', 'gemini-2.5-flash'] }
+    ? { ...p, models: ['custom/lite', ...p.models, 'microsoft-decision-1', 'claude-haiku-4-5', 'gpt-4o-mini', 'gemini-2.5-flash'], configured: ['custom/lite', ...(p.configured ?? []), 'microsoft-decision-1', 'claude-haiku-4-5', 'gpt-4o-mini', 'gemini-2.5-flash'] }
     : p))
   return data
 }
@@ -679,15 +679,17 @@ describe('decision model role and toggles', () => {
     expect(sets(calls)).toEqual([])
   })
 
-  it('offers only System 1 models in the decision picker', async () => {
+  it('offers arbitrary models in the decision picker', async () => {
     install(withDecision())
     await mount('model')
     await act(async () => { fireEvent.click(pill('gui.settings.roles.decision')) })
     const scope = within(picker())
-    expect(scope.getAllByText('microsoft-decision-1').length).toBeGreaterThan(0)
-    for (const m of ['gpt-4o-mini', 'claude-haiku-4-5', 'gemini-2.5-flash', 'custom/lite']) expect(scope.queryByText(m)).toBe(null)
-    expect(scope.queryByText('claude-sonnet-4-5')).toBe(null)
-    expect(scope.queryByText('claude-opus-4-5')).toBe(null)
+    const showAll = scope.queryByRole('button', { name: /gui\.picker\.show_all/ })
+    if (showAll) await act(async () => { fireEvent.click(showAll) })
+    const titles = scope.getAllByRole('radio').map((el) => el.getAttribute('title'))
+    for (const m of ['microsoft-decision-1', 'gpt-4o-mini', 'claude-haiku-4-5', 'gemini-2.5-flash', 'lite']) {
+      expect(titles).toContain(m)
+    }
   })
 
   it('picks and clears decisionModel atomically through decisionModel pair key', async () => {
@@ -769,7 +771,7 @@ describe('decision model role and toggles', () => {
     expect(screen.queryByText('gui.settings.roles.decision_pick_first')).toBe(null)
   })
 
-  it('excludes a System-1-named model flagged with the reasoning capability from the picker', async () => {
+  it('keeps reasoning-tagged models selectable', async () => {
     const data = withDecision()
     data.providers = data.providers.map((p) => (p.id === 'anthropic'
       ? { ...p, labels: { ...(p.labels ?? {}), 'microsoft-decision-1': { label: 'microsoft-decision-1', capabilities: ['reasoning'] } } }
@@ -777,30 +779,65 @@ describe('decision model role and toggles', () => {
     install(data)
     await mount('model')
     await act(async () => { fireEvent.click(pill('gui.settings.roles.decision')) })
-    expect(within(picker()).queryByText('microsoft-decision-1')).toBe(null)
+    expect(within(picker()).getByText('microsoft-decision-1')).toBeTruthy()
   })
 
-  it('keeps both switches disabled and shows the hint when the saved model is not System 1', async () => {
+  it('enables both switches for an arbitrary configured model', async () => {
     const data = withDecision()
     data.raw.decisionModel = { model: 'claude-haiku-4-5', provider: 'anthropic', useForSkills: true, useForSpecialists: true }
     const { calls } = install(data)
     await mount('model')
     const skills = screen.getByRole('switch', { name: 'gui.settings.roles.decision_skills' }) as HTMLButtonElement
     const specs = screen.getByRole('switch', { name: 'gui.settings.roles.decision_specialists' }) as HTMLButtonElement
-    expect(skills.disabled).toBe(true)
-    expect(specs.disabled).toBe(true)
-    expect(screen.getByText('gui.settings.roles.decision_pick_first')).toBeTruthy()
+    expect(skills.disabled).toBe(false)
+    expect(specs.disabled).toBe(false)
+    expect(screen.queryByText('gui.settings.roles.decision_pick_first')).toBe(null)
     await act(async () => { fireEvent.click(skills) })
-    expect(sets(calls)).toEqual([])
+    expect(sets(calls)).toEqual([{ key: 'decisionModel.useForSkills', value: false }])
+  })
+
+  it('wires protocol, endpointPath, timeoutSeconds, and renders non-blocking advisories', async () => {
+    const data = withDecision()
+    data.raw.decisionModel = { model: 'custom/lite', provider: 'anthropic', protocol: 'chat', endpointPath: '', timeoutSeconds: null }
+    data.decisionModel = {
+      effectiveProtocol: 'chat',
+      availableProtocols: [
+        { id: 'chat', display_name: 'Chat (OpenAI-compatible)', supports_probabilities: false },
+        { id: 'criteria_map', display_name: 'Criteria Map', supports_probabilities: true },
+        { id: 'criteria_map_inline', display_name: 'Criteria Map (Inline)', supports_probabilities: true },
+        { id: 'choices_array', display_name: 'Choices Array', supports_probabilities: true },
+      ],
+      advisories: [
+        { code: 'protocol_auto_chat', message: 'Protocol defaults to chat.' },
+        { code: 'reasoning_model_detected', message: 'Reasoning may exceed the routing deadline.' },
+      ],
+    }
+    const { calls } = install(data)
+    await mount('model')
+
+    expect(screen.getByText('Protocol defaults to chat.')).toBeTruthy()
+    expect(screen.getByText('Reasoning may exceed the routing deadline.')).toBeTruthy()
+
+    const protoSelect = screen.getByLabelText('gui.settings.roles.decision_protocol') as HTMLSelectElement
+    await act(async () => { fireEvent.change(protoSelect, { target: { value: 'criteria_map_inline' } }) })
+
+    const epInput = screen.getByLabelText('gui.settings.roles.decision_endpoint_path') as HTMLInputElement
+    await act(async () => {
+      fireEvent.change(epInput, { target: { value: '/v1/classifier' } })
+      fireEvent.blur(epInput)
+    })
+
+    const toInput = screen.getByLabelText('gui.settings.roles.decision_timeout') as HTMLInputElement
+    await act(async () => {
+      fireEvent.change(toInput, { target: { value: '3.5' } })
+      fireEvent.blur(toInput)
+    })
+
+    expect(sets(calls)).toEqual([
+      { key: 'decisionModel.protocol', value: 'criteria_map_inline' },
+      { key: 'decisionModel.endpointPath', value: '/v1/classifier' },
+      { key: 'decisionModel.timeoutSeconds', value: 3.5 },
+    ])
   })
 })
 
-describe('isSystem1DecisionModel', () => {
-  it.each(['microsoft-decision-1', 'Gemini-decision-1', 'ghe-copilot/microsoft-decision-1-1', 'gpt-6-luna-decisions', 'github-copilot/gpt-6-luna-decisions', 'custom/decisions', 'decisions', 'e2e-decision-1'])(
-    'accepts %s', (m) => { expect(isSystem1DecisionModel(m)).toBe(true) })
-  it.each(['o1', 'o1-mini', 'o3-mini', 'o4-mini', 'deepseek-r1', 'gemini-2.5-flash-thinking', 'claude-sonnet-4-6', 'claude-opus-4-6', 'gpt-4o', 'gpt-4o-mini', 'ghe-copilot/gpt-4o-mini', 'claude-haiku-4-5', 'gemini-2.5-flash', 'custom/lite', '', '   '])(
-    'rejects %j', (m) => { expect(isSystem1DecisionModel(m)).toBe(false) })
-  it('rejects when reasoning is true', () => {
-    expect(isSystem1DecisionModel('microsoft-decision-1', true)).toBe(false)
-  })
-})

@@ -839,6 +839,8 @@ class AgentLoop(TurnPathMixin, WiringMixin, McpGlueMixin, OrganGlueMixin):
 
     async def close_executor(self) -> None:
         """Tear down the sandbox executor."""
+        if self._provider_pool is not None:
+            await self._provider_pool.aclose()
         if self._executor_stack:
             try:
                 await self._executor_stack.aclose()

@@ -197,6 +197,26 @@ class LiteLLMProvider(LiteLLMShape):
         # Drop unsupported parameters for providers (e.g., gpt-5 rejects some params)
         litellm.drop_params = True
 
+    async def decision_credentials(self) -> tuple[str, dict[str, str]]:
+        base, headers = await super().decision_credentials()
+        if self._provider_name == "github_copilot":
+            import asyncio
+            from litellm.llms.github_copilot.authenticator import Authenticator
+            from litellm.llms.github_copilot.common_utils import get_copilot_default_headers
+
+            def credentials():
+                auth = Authenticator()
+                token = auth.get_api_key()
+                return auth.get_api_base(), token
+
+            resolved_base, token = await asyncio.to_thread(credentials)
+            base = self.api_base or resolved_base
+            headers = {**get_copilot_default_headers(token), **self.extra_headers}
+        elif self._provider_name == "gemini" and self.api_key:
+            headers.pop("Authorization", None)
+            headers["x-goog-api-key"] = self.api_key
+        return base, headers
+
     def _apply_model_overrides(self, model: str, kwargs: dict[str, Any]) -> None:
         """Layer per-model parameter overrides: registry defaults, config on top.
 

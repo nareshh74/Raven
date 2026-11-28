@@ -22,7 +22,10 @@ Order matters — it controls match priority and fallback. Gateways first.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from raven.providers.decision_protocols import DecisionCapability
 
 
 @dataclass(frozen=True)
@@ -121,6 +124,9 @@ class ProviderSpec:
 
     # Provider supports cache_control on content blocks (e.g. Anthropic prompt caching)
     supports_prompt_caching: bool = False
+    supports_models_endpoint: bool = False
+    decision: DecisionCapability | None = None
+    decision_api_base: str = ""
 
     # The reasoning-effort words this vendor's API accepts, stated here when
     # LiteLLM's table carries the model but not its ladder and the per-level
@@ -307,6 +313,7 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         is_gateway=True,
         requires_api_base=True,
         default_api_base="http://localhost:8000/v1",
+        supports_models_endpoint=True,
         image_api=True,
     ),
     # === Azure OpenAI ======================================================
@@ -797,6 +804,7 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         strip_model_prefix=False,
         model_overrides=(),
         is_oauth=True,
+        supports_models_endpoint=True,
         # No static default: every id we shipped here came back "not supported
         # when using Codex with a ChatGPT account", and the slugs an account does
         # offer are only knowable by asking it (see ``codex_catalog``). Empty
@@ -848,6 +856,7 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
     # Gemini: needs "gemini/" prefix for LiteLLM.
     ProviderSpec(
         name="gemini",
+        decision_api_base="https://generativelanguage.googleapis.com",
         key_url="https://aistudio.google.com/apikey",
         keywords=("gemini",),
         env_key="GEMINI_API_KEY",
@@ -1064,6 +1073,7 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         default_api_base="",  # user must provide in config
         strip_model_prefix=False,
         model_overrides=(),
+        supports_models_endpoint=True,
     ),
     # === LM Studio (local, OpenAI-compatible) ===============================
     ProviderSpec(
@@ -1083,6 +1093,7 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         default_api_base="http://localhost:1234/v1",
         strip_model_prefix=False,
         model_overrides=(),
+        supports_models_endpoint=True,
     ),
     # === Ollama (local, OpenAI-compatible) ===================================
     ProviderSpec(
@@ -1102,6 +1113,7 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         default_api_base="http://localhost:11434",
         strip_model_prefix=False,
         model_overrides=(),
+        supports_models_endpoint=True,
     ),
     # === Direct vendors LiteLLM routes ====================================
     # LiteLLM already routes all six from a key plus a prefixed id, so these

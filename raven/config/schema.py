@@ -19,6 +19,7 @@ from pydantic.alias_generators import to_camel
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from raven.config.agent_names import THIRD_PARTY_PRESET_NAMES
+from raven.providers.decision_protocols import DecisionCapability
 from raven.contracts.path_policy import WORKSPACE_DEFAULT_SENTINEL
 from raven.sandbox.config import SandboxConfig
 
@@ -396,6 +397,8 @@ class ModelOverlay(Base):
     input_modalities: list[str] = Field(default_factory=list)
     output_modalities: list[str] = Field(default_factory=list)
     reasoning_efforts: list[str] = Field(default_factory=list)
+    decision: DecisionCapability | None = None
+    observed_latency_ms: float | None = Field(default=None, ge=0, allow_inf_nan=False)
 
 
 class ProviderEndpoint(Base):
@@ -435,6 +438,8 @@ class ProviderConfig(Base):
     # models use Anthropic Messages; model_protocols can override either rule.
     protocol: Literal["chat", "responses", "anthropic"] | None = None
     model_protocols: dict[str, Literal["chat", "responses", "anthropic"]] = Field(default_factory=dict)
+    decision: DecisionCapability | None = None
+    supports_models_endpoint: bool = False
     # Custom headers (e.g. APP-Code for AiHubMix) -- can carry a secret, so
     # display faces redact the values (keys stay visible).
     extra_headers: dict[str, str] | None = Field(default=None, json_schema_extra={"secret": True})

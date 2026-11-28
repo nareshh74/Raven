@@ -22,7 +22,7 @@ import json
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic.alias_generators import to_camel
 
 from raven.config.loader import (
@@ -1815,8 +1815,29 @@ class DecisionModelConfig(_Base):
 
     model: str | None = None
     provider: str | None = None
-    use_for_skills: bool = False
-    use_for_specialists: bool = False
+    use_for_skills: bool = Field(default=False, strict=True)
+    use_for_specialists: bool = Field(default=False, strict=True)
+    protocol: str | None = None
+    endpoint_path: str | None = None
+    timeout_seconds: float | None = Field(default=None, ge=0.5, le=15.0, allow_inf_nan=False, strict=True)
+
+    @field_validator("protocol")
+    @classmethod
+    def _registered_protocol(cls, value: str | None) -> str | None:
+        if value is not None:
+            from raven.providers.decision_protocols import get_decision_adapter
+
+            get_decision_adapter(value)
+        return value
+
+    @field_validator("endpoint_path")
+    @classmethod
+    def _safe_endpoint(cls, value: str | None) -> str | None:
+        if value is not None:
+            from raven.providers.decision_protocols import validate_endpoint_path
+
+            validate_endpoint_path(value)
+        return value
 
 
 class VisionConfig(_Base):

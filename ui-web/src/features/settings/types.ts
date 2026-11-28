@@ -155,6 +155,7 @@ export type AgentPluginRow = AgentPluginList['packages'][number]
    `ext.list`'s own, untouched, because the two pages read fields the
    inventory's row shapes drop (`always`, `auth`, `credentialed`). */
 export interface SettingsSnapshot {
+  decisionModel?: Record<string, unknown>
   raw: Record<string, unknown>
   configPath: string
   /* The Skill Hub source as the runtime reads it, answered by settings.get:

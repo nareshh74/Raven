@@ -1899,7 +1899,8 @@ async def test_settings_pin_merge_follows_the_non_null_alias(
 
     result = await rpc_console.settings_set({"key": camel, "value": value})
 
-    assert result == {"applied": True, "previous": previous}
+    assert result["applied"] is True
+    assert result["previous"] == previous
     assert _read(cfg) == {empty: None, active: {**keep, **value}}
     load_raven_config(config_path=cfg)
 
@@ -2038,6 +2039,33 @@ async def test_settings_set_decision_model_round_trip(cfg):
         await rpc_console.settings_set({"key": "decisionModel.useForSkills", "value": "yes"})
     with pytest.raises(ConfigValidationError):
         await rpc_console.settings_set({"key": "decisionModel.useForSpecialists", "value": 1})
+
+
+async def test_settings_decision_accepts_arbitrary_model_and_protocol(cfg):
+    result = await rpc_console.settings_set({
+        "key": "decisionModel", "value": {"model": "my-alias-v9", "provider": "openai"},
+    })
+    assert result["decisionModel"]["effectiveProtocol"] == "chat"
+    assert result["decisionModel"]["advisories"][0]["code"] == "protocol_auto_chat"
+    await rpc_console.settings_set({
+        "key": "decisionModel", "value": {
+            "model": "renamed", "provider": "openai", "protocol": "criteria_map_inline",
+            "endpointPath": "/native", "timeoutSeconds": 0.5,
+        },
+    })
+    metadata = (await rpc_console.settings_get({}))["decisionModel"]
+    assert metadata["effectiveProtocol"] == "criteria_map_inline"
+    assert metadata["advisories"] == []
+
+
+@pytest.mark.parametrize("key,value", [
+    ("protocol", "nonexistent"), ("endpointPath", "//other.invalid/classify"),
+    ("endpointPath", "/%252e%252e/secrets"), ("timeoutSeconds", 0.1),
+    ("timeoutSeconds", float("inf")),
+])
+async def test_settings_decision_rejects_unsafe_fields(cfg, key, value):
+    with pytest.raises(ConfigValidationError):
+        await rpc_console.settings_set({"key": f"decisionModel.{key}", "value": value})
 
 
 async def test_settings_set_decision_model_clear_preserves_flags(cfg):
@@ -2432,11 +2460,11 @@ async def test_role_write_is_refused_for_the_cloud_backend(memory_cfg):
 
 @pytest.mark.parametrize("model", ["ghe-copilot/gpt-4o-mini", "gpt-4o-mini", "claude-haiku-4-5", "gemini-2.5-flash", "custom/lite", "o3-mini", "deepseek-r1", "claude-opus-4-6", "claude-sonnet-4-6"])
 @pytest.mark.parametrize("key", ["decisionModel", "decisionModel.model"])
-async def test_settings_set_decision_model_rejects_non_system1(cfg, key, model):
+async def test_settings_set_decision_model_accepts_arbitrary_names(cfg, key, model):
     value = {"model": model, "provider": "openai"} if key == "decisionModel" else model
-    with pytest.raises(ConfigValidationError) as ei:
-        await rpc_console.settings_set({"key": key, "value": value})
-    assert ei.value.code == -32011
+    result = await rpc_console.settings_set({"key": key, "value": value})
+    assert result["applied"] is True
+    assert _read(cfg)["decisionModel"]["model"] == model
 
 
 @pytest.mark.parametrize("model", ["Microsoft-decision-1", "Gemini-decision-1", "gpt-6-luna-decisions", "decisions"])
@@ -2451,3 +2479,63 @@ async def test_settings_set_decision_model_leaf_clear(cfg):
     await rpc_console.settings_set({"key": "decisionModel.model", "value": "microsoft-decision-1"})
     await rpc_console.settings_set({"key": "decisionModel.model", "value": None})
     assert _read(cfg)["decisionModel"]["model"] is None
+
+
+async def test_decision_pair_exposes_all_fields_and_unset_protocol_advisory(cfg):
+    from raven.rpc.models import SettingsSetResult
+
+    value = {
+        "model": "renamed-alias-v9", "provider": "openai",
+        "endpointPath": "/route", "timeoutSeconds": 1.5,
+    }
+    out = await rpc_console.settings_set({"key": "decisionModel", "value": value})
+    SettingsSetResult.model_validate(out)
+    decision = out["decisionModel"]
+    assert decision["effectiveProtocol"] == "chat"
+    assert {"chat", "criteria_map", "criteria_map_inline", "choices_array"} <= {
+        row["id"] for row in decision["availableProtocols"]
+    }
+    assert decision["endpointPath"] == "/route"
+    assert decision["timeoutSeconds"] == 1.5
+    assert "protocol_auto_chat" in {a["code"] for a in decision["advisories"]}
+
+
+@pytest.mark.parametrize("key,value", [
+    ("protocol", "unregistered"),
+    ("endpointPath", "//other.invalid/classify"),
+    ("endpointPath", "/%252e%252e/escape"),
+    ("timeoutSeconds", 0.1),
+    ("timeoutSeconds", True),
+])
+async def test_decision_invalid_fields_are_rejected_before_writing(cfg, key, value):
+    before = cfg.read_bytes()
+    with pytest.raises(ConfigValidationError):
+        await rpc_console.settings_set({"key": f"decisionModel.{key}", "value": value})
+    assert cfg.read_bytes() == before
+
+
+async def test_decision_advisories_do_not_silently_select_a_native_protocol(monkeypatch):
+    monkeypatch.setattr("raven.providers.served_models.recall", lambda _: {
+        "renamed": {"decision": {"protocol_id": "criteria_map"}, "observedLatencyMs": 3000},
+    })
+    raw = {
+        "decisionModel": {"model": "renamed", "provider": "gateway"},
+        "providers": {"gateway": {"modelOverlay": {
+            "renamed": {"decision": {"is_reasoning": True}},
+        }}},
+    }
+    result = rpc_console._decision_metadata(raw)
+    assert result["effectiveProtocol"] == "chat"
+    assert {a["code"] for a in result["advisories"]} == {
+        "protocol_auto_chat", "reasoning_model_detected", "high_observed_latency",
+    }
+
+
+@pytest.mark.parametrize("node", [
+    {"protocol": "typo"}, {"timeoutSeconds": 0.1}, "invalid block",
+])
+async def test_invalid_decision_config_keeps_the_settings_repair_surface_available(cfg, node):
+    cfg.write_text(json.dumps({"decisionModel": node}), encoding="utf-8")
+    result = await rpc_console.settings_get({})
+    assert result["settings"]["decisionModel"] == node
+    assert "invalid_decision_config" in {a["code"] for a in result["decisionModel"]["advisories"]}

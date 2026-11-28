@@ -43,6 +43,7 @@ from loguru import logger
 from pydantic.alias_generators import to_camel
 
 if TYPE_CHECKING:
+    from raven.config.raven import DecisionModelConfig
     from raven.config.schema import SubagentRuntimeConfig
 
 __all__ = [
@@ -56,6 +57,10 @@ __all__ = [
     "decision_for_skills",
     "decision_for_specialists",
     "decision_pin",
+    "decision_settings",
+    "decision_protocol",
+    "decision_endpoint_path",
+    "decision_timeout",
     "default_live",
     "default_model",
     "exec_timeout",
@@ -704,20 +709,46 @@ def _block_pin(live: LiveConfig, blocks: tuple[str, ...], model_field: str, prov
 
 def decision_pin(live: LiveConfig) -> tuple[str | None, str | None]:
     """``decisionModel.model`` and the provider serving it, read live."""
-    return _block_pin(live, ("decisionModel", "decision_model"), "model", "provider")
+    cfg = decision_settings(live)
+    return cfg.model, cfg.provider
+
+
+def decision_settings(live: LiveConfig) -> DecisionModelConfig:
+    return held(f"decision_settings:{id(live)}", lambda: _read_decision_settings(live))
+
+
+def _read_decision_settings(live: LiveConfig) -> DecisionModelConfig:
+    """Admit one complete decision block, never a mixture of valid and torn fields."""
+    from pydantic import ValidationError
+    from raven.config.raven import DecisionModelConfig
+
+    raw = live.raw()
+    node = raw.get("decisionModel", raw.get("decision_model"))
+    if node is None:
+        live._admitted.pop("decision_settings", None)
+        return DecisionModelConfig()
+    try:
+        value = DecisionModelConfig.model_validate(node)
+    except ValidationError:
+        logger.warning("decisionModel: invalid edit; retaining last valid decision settings")
+        value = None
+    return _admit(live, "decision_settings", present=True, value=value) or DecisionModelConfig()
+
+
+def decision_protocol(live: LiveConfig) -> str | None:
+    return decision_settings(live).protocol
+
+
+def decision_endpoint_path(live: LiveConfig) -> str | None:
+    return decision_settings(live).endpoint_path
+
+
+def decision_timeout(live: LiveConfig) -> float | None:
+    return decision_settings(live).timeout_seconds
 
 
 def _decision_flag(live: LiveConfig, field_name: str) -> bool:
-    camel = to_camel(field_name)
-    for block_name in ("decisionModel", "decision_model"):
-        node = live.raw().get(block_name)
-        if not isinstance(node, dict):
-            continue
-        if camel in node and isinstance(node[camel], bool):
-            return node[camel]
-        if field_name in node and isinstance(node[field_name], bool):
-            return node[field_name]
-    return False
+    return getattr(decision_settings(live), field_name)
 
 
 def decision_for_skills(live: LiveConfig) -> bool:

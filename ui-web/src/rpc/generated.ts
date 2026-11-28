@@ -3477,6 +3477,9 @@ export interface ModelOptionsParams {
   include_providers?: boolean;
 }
 export interface ModelOptionsResult {
+  decision_protocols?: {
+    [k: string]: JsonValue;
+  }[];
   model: string;
   provider: string;
   providers: ModelOptionProvider[];
@@ -4771,6 +4774,9 @@ export interface CronRunsResult {
 }
 export interface SettingsGetParams {}
 export interface SettingsGetResult {
+  decisionModel?: {
+    [k: string]: JsonValue;
+  };
   /**
    * Raw config.json with secret-looking values masked.
    */
@@ -4812,6 +4818,9 @@ export interface SettingsSetParams {
 export interface SettingsSetResult {
   applied: boolean;
   previous: JsonValue;
+  decisionModel?: {
+    [k: string]: JsonValue;
+  } | null;
   /**
    * Why this page has nothing to show, when that is not a failure: the memory plugin is not installed, or it is installed but is not what memory.backend names. Null when the store was actually consulted.
    */

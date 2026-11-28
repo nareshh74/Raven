@@ -10,29 +10,9 @@ import { Card, Row, Rov, Seg, Stepper, Switch } from '../Fields'
 import { dig } from '../source'
 import * as store from '../store'
 
-import type { Kind, Offer, Provider } from '../../model/types'
+import type { Kind, Offer } from '../../model/types'
 import type { ProviderRow, SettingsSnapshot } from '../types'
 import type { JSX } from 'react'
-
-const SYSTEM2_RE = /(?:^|[-_.:/])(?:o[134]|r1|reasoner|reasoning|thinking|thought|qwq|marco-o1)(?:$|[-_.:/])/i
-const DECISION_RE = /(?:^|[^a-z0-9])decisions?(?:$|[^a-z0-9])/i
-
-export function isSystem1DecisionModel(modelId: string, reasoning?: boolean): boolean {
-  if (reasoning === true) return false
-  const raw = (modelId || '').trim()
-  if (!raw) return false
-  const slash = raw.lastIndexOf('/')
-  const name = (slash >= 0 ? raw.slice(slash + 1) : raw).trim().toLowerCase()
-  if (!name) return false
-  if (SYSTEM2_RE.test(name)) return false
-  return DECISION_RE.test(name)
-}
-
-const isDecisionModelOption = (model: string, provider: Provider): boolean => {
-  const facts = provider.labels?.[model]
-  const reasoning = facts?.capabilities?.includes('reasoning') ? true : undefined
-  return isSystem1DecisionModel(model, reasoning)
-}
 
 export type RoleId =
   | 'chat' | 'decisionModel' | 'title' | 'memllm'
@@ -371,7 +351,6 @@ export function RolePill({ role, setup }: { role: Role; setup?: boolean }): JSX.
   const offer: Offer = {
     kind: ROLE_KIND[role.id],
     providers: provs.map((p) => p.id),
-    filter: role.id === 'decisionModel' ? isDecisionModelOption : undefined,
     title: roleName(role),
     current: val ?? (inherit && chat ? chat : undefined),
     pick: async (model, provider, typed, kind) => {
@@ -569,22 +548,105 @@ const decisionFlag = (raw: Record<string, unknown>, camel: string, snake: string
   return typeof s === 'boolean' ? s : false
 }
 
+const decisionField = (raw: Record<string, unknown>, camel: string, snake: string): unknown =>
+  dig(raw, `decisionModel.${camel}`) ?? dig(raw, `decisionModel.${snake}`)
+
 function DecisionToggles({ role }: { role: Role }): JSX.Element {
   const s = store.get()
   const raw = s.snap.raw
   const val = roleValue(role, s.snap)
-  const savedProvider = val ? s.snap.providers.find((p) => p.id === val.provider) : undefined
-  const hasDecisionModel = !!val && (savedProvider
-    ? isDecisionModelOption(val.model, savedProvider)
-    : isSystem1DecisionModel(val.model))
-  const busy = s.busy.includes('decisionModel.useForSkills') || s.busy.includes('decisionModel.useForSpecialists') || s.busy.includes(`role:${role.id}`)
+  const hasDecisionModel = !!val?.model.trim()
+  const metadata = s.snap.decisionModel
+  const protocols = Array.isArray(metadata?.availableProtocols) ? metadata.availableProtocols : []
+  const advisories = Array.isArray(metadata?.advisories) ? metadata.advisories : []
+  const protocolRaw = decisionField(raw, 'protocol', 'protocol')
+  const protocol = typeof protocolRaw === 'string' ? protocolRaw : ''
+  const endpointRaw = decisionField(raw, 'endpointPath', 'endpoint_path')
+  const endpointPath = typeof endpointRaw === 'string' ? endpointRaw : ''
+  const timeoutRaw = decisionField(raw, 'timeoutSeconds', 'timeout_seconds')
+  const timeoutText = typeof timeoutRaw === 'number' && Number.isFinite(timeoutRaw) ? String(timeoutRaw) : ''
+  const busy = s.busy.includes('decisionModel.useForSkills')
+    || s.busy.includes('decisionModel.useForSpecialists')
+    || s.busy.includes('decisionModel.protocol')
+    || s.busy.includes('decisionModel.endpointPath')
+    || s.busy.includes('decisionModel.timeoutSeconds')
+    || s.busy.includes(`role:${role.id}`)
   const disabled = busy || !hasDecisionModel
   const useForSkills = decisionFlag(raw, 'useForSkills', 'use_for_skills')
   const useForSpecialists = decisionFlag(raw, 'useForSpecialists', 'use_for_specialists')
   const skillsLabel = t('gui.settings.roles.decision_skills')
   const specialistsLabel = t('gui.settings.roles.decision_specialists')
+  const saveEndpointPath = (text: string): void => {
+    const trimmed = text.trim()
+    if (trimmed === endpointPath) return
+    if (trimmed && (!trimmed.startsWith('/') || trimmed.includes('://') || trimmed.includes('..'))) {
+      store.refuse(t('gui.settings.roles.decision_endpoint_path_invalid'))
+      return
+    }
+    void store.write('decisionModel.endpointPath', trimmed || null, { remount: false })
+  }
+  const saveTimeout = (text: string): void => {
+    const trimmed = text.trim()
+    if (trimmed === timeoutText) return
+    if (!trimmed) {
+      void store.write('decisionModel.timeoutSeconds', null, { remount: false })
+      return
+    }
+    const parsed = Number(trimmed)
+    if (!Number.isFinite(parsed) || parsed < 0.5 || parsed > 15.0) {
+      store.refuse(t('gui.settings.roles.decision_timeout_invalid'))
+      return
+    }
+    void store.write('decisionModel.timeoutSeconds', parsed, { remount: false })
+  }
   return (
     <div className="settings-decision-cfg">
+      <Row label={t('gui.settings.roles.decision_protocol')} sub={String(metadata?.effectiveProtocol ?? '')}>
+        <select
+          aria-label={t('gui.settings.roles.decision_protocol')}
+          value={protocol}
+          disabled={disabled}
+          onChange={(event) => {
+            void store.write('decisionModel.protocol', event.target.value || null, { remount: false })
+          }}
+        >
+          <option value="">{t('gui.settings.roles.decision_protocol_auto')}</option>
+          {protocols.map((item: unknown) => {
+            if (!item || typeof item !== 'object' || !('id' in item) || typeof item.id !== 'string') return null
+            const label = 'display_name' in item && typeof item.display_name === 'string' ? item.display_name : item.id
+            return <option key={item.id} value={item.id}>{label}</option>
+          })}
+        </select>
+      </Row>
+      <Row label={t('gui.settings.roles.decision_endpoint_path')} sub={t('gui.settings.roles.decision_endpoint_path_use')}>
+        <input
+          key={`ep:${endpointPath}`}
+          className="settings-tbox"
+          aria-label={t('gui.settings.roles.decision_endpoint_path')}
+          placeholder="/v1/..."
+          defaultValue={endpointPath}
+          disabled={disabled}
+          onBlur={(e) => saveEndpointPath(e.currentTarget.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') saveEndpointPath(e.currentTarget.value) }}
+        />
+      </Row>
+      <Row label={t('gui.settings.roles.decision_timeout')} sub={t('gui.settings.roles.decision_timeout_use')}>
+        <input
+          key={`to:${timeoutText}`}
+          className="settings-tbox settings-ctxbox"
+          aria-label={t('gui.settings.roles.decision_timeout')}
+          inputMode="decimal"
+          placeholder="2.0"
+          defaultValue={timeoutText}
+          disabled={disabled}
+          onBlur={(e) => saveTimeout(e.currentTarget.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') saveTimeout(e.currentTarget.value) }}
+        />
+      </Row>
+      {advisories.map((item: unknown, index: number) => (
+        item && typeof item === 'object' && 'message' in item && typeof item.message === 'string'
+          ? <div className="settings-cfnote" role="status" key={index}>{item.message}</div> : null
+      ))}
       <Row label={skillsLabel} sub={t('gui.settings.roles.decision_skills_use')}>
         <Switch
           on={useForSkills}

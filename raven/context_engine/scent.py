@@ -241,7 +241,7 @@ class ScentMenu:
                 query,
                 entries,
                 max_skills=self._top_k,
-                timeout=3.0,
+                timeout=2.0,
             )
             if chosen is not None:
                 by_id = dict(entries)
