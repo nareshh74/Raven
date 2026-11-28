@@ -2539,3 +2539,24 @@ async def test_invalid_decision_config_keeps_the_settings_repair_surface_availab
     result = await rpc_console.settings_get({})
     assert result["settings"]["decisionModel"] == node
     assert "invalid_decision_config" in {a["code"] for a in result["decisionModel"]["advisories"]}
+
+
+async def test_prevent_sleep_settings_set_updates_guard_live(cfg, monkeypatch):
+    from raven.utils import sleep_guard
+
+    toggled: list[bool] = []
+    fake_guard = SimpleNamespace(set_enabled=lambda v: toggled.append(v))
+    monkeypatch.setattr(sleep_guard, "get_sleep_guard", lambda: fake_guard)
+
+    r1 = await rpc_console.settings_set({"key": "runtime.preventSleep", "value": True})
+    assert r1["applied"] is True
+    assert _read(cfg)["runtime"]["preventSleep"] is True
+    assert toggled == [True]
+
+    r2 = await rpc_console.settings_set({"key": "runtime.preventSleep", "value": False})
+    assert r2["applied"] is True
+    assert _read(cfg)["runtime"]["preventSleep"] is False
+    assert toggled == [True, False]
+
+    with pytest.raises(ConfigValidationError):
+        await rpc_console.settings_set({"key": "runtime.preventSleep", "value": "yes"})

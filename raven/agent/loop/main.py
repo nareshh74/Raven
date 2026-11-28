@@ -1200,12 +1200,22 @@ class AgentLoop(TurnPathMixin, WiringMixin, McpGlueMixin, OrganGlueMixin):
         increments first (the switch waits) or runs after it (it sees the new
         backend).
         """
+        was_zero = self._active_turns == 0
         self._active_turns += 1
         self._turns_idle.clear()
+        if was_zero:
+            from raven.utils.sleep_guard import get_sleep_guard
+
+            guard = get_sleep_guard()
+            guard.sync_from_config(self._live_config)
+            guard.acquire(f"loop:{id(self)}")
 
     def _exit_turn(self) -> None:
         self._active_turns -= 1
         if self._active_turns == 0:
+            from raven.utils.sleep_guard import get_sleep_guard
+
+            get_sleep_guard().release(f"loop:{id(self)}")
             self._turns_idle.set()
             # A switch asked for while that turn was running lands now, on
             # its own task: the turn is finishing, and the swap must not

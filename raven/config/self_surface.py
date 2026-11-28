@@ -828,6 +828,13 @@ SECTIONS: tuple[Section, ...] = (
                 writer="settings",
                 choices=("en", "zh"),
             ),
+            Setting(
+                "runtime.preventSleep",
+                "Prevent system and screen sleep while tasks are running",
+                "bool",
+                _E.IMMEDIATE,
+                writer="settings",
+            ),
         ),
     ),
 )

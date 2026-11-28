@@ -891,7 +891,12 @@ async def settings_set(params: dict, *, agent_loop_factory=None) -> dict:
 
     checker = _SETTINGS_SIMPLE_KEYS.get(key)
     if checker is not None:
-        written = _write_raw_key(key, checker(value), merge=key in _MERGED_KEYS)
+        checked = checker(value)
+        written = _write_raw_key(key, checked, merge=key in _MERGED_KEYS)
+        if key == "runtime.preventSleep":
+            from raven.utils.sleep_guard import get_sleep_guard
+
+            get_sleep_guard().set_enabled(bool(checked))
         if key in MIRRORED_KEYS:
             # POSIX cli/acp sub-agents read every web credential from the
             # environment their login shell builds, not from the config, so the
@@ -1361,6 +1366,7 @@ _SETTINGS_SIMPLE_KEYS: dict[str, Any] = {
     "tools.media.speech": _chk_media_selection,
     "tools.media.video": _chk_routed_selection("video"),
     "sessions.autoArchiveAfterDays": _chk_int_or_null("sessions.autoArchiveAfterDays", 1, 3650),
+    "runtime.preventSleep": _chk_bool("runtime.preventSleep"),
 }
 
 

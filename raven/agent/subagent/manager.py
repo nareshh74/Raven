@@ -863,13 +863,20 @@ class SubagentManager:
     ) -> None:
         """Index a running task so the cancellation paths can reach it, and
         un-index it when it ends."""
+        from raven.utils.sleep_guard import get_sleep_guard
+
         self._running_tasks[task_id] = task
         if session_key:
             self._session_tasks.setdefault(session_key, set()).add(task_id)
         if instance_key is not None:
             self._instance_tasks.setdefault(instance_key, set()).add(task_id)
+        sleep_token = f"subagent:{id(self)}:{task_id}"
+        guard = get_sleep_guard()
+        guard.sync_from_config(self._live_config)
+        guard.acquire(sleep_token)
 
         def _cleanup(_: asyncio.Task) -> None:
+            guard.release(sleep_token)
             self._running_tasks.pop(task_id, None)
             if session_key and (ids := self._session_tasks.get(session_key)):
                 ids.discard(task_id)
@@ -1394,12 +1401,19 @@ class SubagentManager:
             yield
             return
 
+        from raven.utils.sleep_guard import get_sleep_guard
+
         task_id = f"direct-{uuid.uuid4().hex[:8]}"
         self._running_tasks[task_id] = task
         self._instance_tasks.setdefault(key, set()).add(task_id)
+        sleep_token = f"subagent:{id(self)}:{task_id}"
+        guard = get_sleep_guard()
+        guard.sync_from_config(self._live_config)
+        guard.acquire(sleep_token)
         try:
             yield
         finally:
+            guard.release(sleep_token)
             self._running_tasks.pop(task_id, None)
             # Written by chat() once the handle lock is held; absent when the
             # turn never got that far.

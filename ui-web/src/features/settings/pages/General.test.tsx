@@ -52,10 +52,25 @@ describe('general page', () => {
   it('says what each setting is for under its name', async () => {
     install()
     await mount('general')
-    for (const k of ['language', 'theme']) {
+    for (const k of ['language', 'prevent_sleep', 'theme']) {
       const title = screen.getByText('gui.settings.general.' + k, { selector: '.settings-gen-t' })
       expect(title.nextElementSibling!.textContent).toBe('gui.settings.general.' + k + '_sub')
     }
+  })
+
+  it('toggles prevent sleep via runtime.preventSleep without remounting', async () => {
+    const { calls, data } = install(undefined, {
+      set: async (key, value) => {
+        calls.push(['set', { key, value }])
+        return { ...data, raw: { ...data.raw, runtime: { preventSleep: Boolean(value) } } }
+      },
+    })
+    await mount('general')
+    const sw = screen.getByRole('switch', { name: 'gui.settings.general.prevent_sleep' })
+    expect(sw.getAttribute('aria-checked')).toBe('false')
+    await act(async () => { fireEvent.click(sw) })
+    expect(calls).toEqual([['set', { key: 'runtime.preventSleep', value: true }]])
+    expect(screen.getByRole('switch', { name: 'gui.settings.general.prevent_sleep' }).getAttribute('aria-checked')).toBe('true')
   })
 
   it('offers no desktop-notification switch', async () => {
@@ -65,7 +80,7 @@ describe('general page', () => {
     Object.defineProperty(window, 'Notification', { value: { permission: 'granted', requestPermission: async () => 'granted' }, configurable: true })
     install()
     await mount('general')
-    expect(screen.queryByRole('switch')).toBeNull()
+    expect(screen.queryByRole('switch', { name: 'gui.settings.general.notify' })).toBeNull()
     expect(screen.queryByText('gui.settings.general.notify')).toBeNull()
   })
 })

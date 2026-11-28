@@ -1772,6 +1772,7 @@ class RuntimeConfig(_Base):
     """
 
     checkpoint: CheckpointConfig = Field(default_factory=CheckpointConfig)
+    prevent_sleep: bool = False
 
 
 class TracingConfig(_Base):
