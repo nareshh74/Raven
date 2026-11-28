@@ -28,7 +28,7 @@ from raven.security.network import guarded_fetch, validate_url_target
 
 def _firecrawl_base() -> str:
     """Custom Firecrawl root: env var, then ``tools.web.providers.firecrawl.baseUrl``, else ``""``."""
-    env = os.environ.get("FIRECRAWL_API_BASE_URL", "")
+    env = os.environ.get("FIRECRAWL_API_BASE_URL") or os.environ.get("FIRECRAWL_API_URL") or ""
     if env:
         return env
     from raven.config.live import default_live
@@ -541,14 +541,13 @@ class WebSearchTool(Tool):
                 timeout=10.0,
             )
         if vendor == "firecrawl":
+            headers = {"Accept": "application/json", "Content-Type": "application/json"}
+            if key:
+                headers["Authorization"] = f"Bearer {key}"
             return await client.post(
                 _firecrawl_url("/v2/search"),
                 json={"query": query, "limit": n},
-                headers={
-                    "Accept": "application/json",
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {key}",
-                },
+                headers=headers,
                 timeout=10.0,
             )
         if vendor == "serply":
@@ -1414,11 +1413,14 @@ class WebFetchTool(Tool):
             return text, r.status_code, {"title": str(hit["title"])} if hit.get("title") else {}
 
         if vendor == "firecrawl":
+            headers = dict(json_headers)
+            if key:
+                headers["Authorization"] = f"Bearer {key}"
             async with httpx.AsyncClient(timeout=30.0, proxy=self.proxy) as client:
                 r = await client.post(
                     _firecrawl_url("/v2/scrape"),
                     json={"url": url, "formats": ["markdown"]},
-                    headers={**json_headers, "Authorization": f"Bearer {key}"},
+                    headers=headers,
                 )
                 r.raise_for_status()
             data = r.json()

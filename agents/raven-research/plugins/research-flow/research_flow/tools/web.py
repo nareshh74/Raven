@@ -51,7 +51,6 @@ from typing import Any
 import httpx
 from loguru import logger
 
-from raven.agent.tools.web import _firecrawl_url
 from raven.contracts.tool import Tool
 from raven.security.network import validate_url_target
 from research_flow.support.evidence_round import EvidenceRound
@@ -60,6 +59,25 @@ from research_flow.support.ledger import ledger_append as _ledger_append
 from research_flow.support.ledger import verbatim_append as _verbatim_append
 from research_flow.support.ledger import verbatim_path as _verbatim_path
 from research_flow.support.search_saturation import SearchSaturation
+
+
+def _firecrawl_base(base_url: str | None = None) -> str:
+    env = os.environ.get("FIRECRAWL_API_BASE_URL") or os.environ.get("FIRECRAWL_API_URL") or ""
+    if env:
+        return env
+    if base_url:
+        return str(base_url)
+    from raven.config.live import default_live
+
+    return str(default_live().get("tools.web.providers.firecrawl.baseUrl") or "")
+
+
+def _firecrawl_url(path: str, base_url: str | None = None) -> str:
+    return (_firecrawl_base(base_url) or "https://api.firecrawl.dev").rstrip("/") + path
+
+
+def _keyless(vendor: str, base_url: str | None = None) -> bool:
+    return vendor == "firecrawl" and bool(_firecrawl_base(base_url))
 
 DigestFn = Callable[[str, str], Awaitable["str | DigestOutput"]]
 
@@ -645,8 +663,10 @@ class WebSearchTool(Tool):
         repeat_notice: bool = False,
         evidence_round_factory: Callable[[], EvidenceRound] | None = None,
         saturation_factory: Callable[[], SearchSaturation] | None = None,
+        base_url: str | None = None,
     ):
         self._init_api_key = api_key
+        self._base_url = base_url
         self.max_results = max_results
         self.proxy = proxy
         self.provider = resolve_search_provider(provider)
@@ -681,6 +701,10 @@ class WebSearchTool(Tool):
     def api_key(self) -> str:
         """Resolve API key at call time so env/config changes are picked up."""
         return self._init_api_key or os.environ.get(self.spec.env_var, "")
+
+    @property
+    def ready(self) -> bool:
+        return bool(self.api_key) or not self.spec.needs_key or _keyless(self.provider, self._base_url)
 
     def _state(self) -> _SearchTurnState:
         """The current session's slot, built on first use from inside that session's context."""
@@ -1070,7 +1094,7 @@ class WebSearchTool(Tool):
         making it one read makes them unable to disagree.
         """
         saturation = state.saturation
-        if self.spec.needs_key and not self.api_key:
+        if self.spec.needs_key and not self.api_key and not _keyless(self.provider, self._base_url):
             return (
                 f"Error: {self.spec.label} API key not configured. Set it in "
                 '~/.raven/config.json under plugins.config["research-flow"].search.apiKey '
@@ -1274,14 +1298,16 @@ class WebSearchTool(Tool):
                 timeout=10.0,
             )
         if self.provider == "firecrawl":
+            headers = {
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+            }
+            if key := self.api_key:
+                headers["Authorization"] = f"Bearer {key}"
             return await client.post(
-                _firecrawl_url("/v2/search"),
+                _firecrawl_url("/v2/search", self._base_url),
                 json={"query": query, "limit": n},
-                headers={
-                    "Accept": "application/json",
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {self.api_key}",
-                },
+                headers=headers,
                 timeout=10.0,
             )
         if self.provider == "serply":
@@ -1677,8 +1703,10 @@ class WebFetchTool(Tool):
         digest_fn: DigestFn | None = None,
         digest_threshold_chars: int = 8000,
         digest_timeout_s: float = 30.0,
+        base_url: str | None = None,
     ):
         self._init_api_key = api_key
+        self._base_url = base_url
         self.max_chars = max_chars
         self.proxy = proxy
         self.provider = resolve_fetch_provider(provider)
@@ -1716,7 +1744,7 @@ class WebFetchTool(Tool):
         self._state().retry_budget = _RetryBudget()
 
     @classmethod
-    def effective_provider(cls, provider: str, api_key: str | None) -> str:
+    def effective_provider(cls, provider: str, api_key: str | None, base_url: str | None = None) -> str:
         """The backend to build: the selected one, or the default reader when it cannot run.
 
         The kernel's own ``web_fetch`` answers this question the same way, and
@@ -1736,7 +1764,7 @@ class WebFetchTool(Tool):
         """
         provider = resolve_fetch_provider(provider)
         spec = FETCH_PROVIDERS[provider]
-        if not spec.needs_key or api_key or os.environ.get(spec.env_var):
+        if not spec.needs_key or api_key or os.environ.get(spec.env_var) or _keyless(provider, base_url):
             return provider
         logger.warning(
             "WebFetch: {} selected but no key resolves ({}); reading pages through {} instead",
@@ -1927,7 +1955,7 @@ class WebFetchTool(Tool):
         # A backend with no anonymous tier cannot serve anything without its key.
         # Answered before the URL is judged: the fault is the configuration's, and
         # a well-formed URL would otherwise hide it behind a vendor error.
-        if self.spec.needs_key and not self.api_key:
+        if self.spec.needs_key and not self.api_key and not _keyless(self.provider, self._base_url):
             return json.dumps(
                 {
                     "error": (
@@ -2191,12 +2219,14 @@ class WebFetchTool(Tool):
             return text, r.status_code
 
         if self.provider == "firecrawl":
-            headers = {**json_headers, "Authorization": f"Bearer {self.api_key}"}
+            headers = dict(json_headers)
+            if key := self.api_key:
+                headers["Authorization"] = f"Bearer {key}"
 
             async def _send_fc() -> httpx.Response:
                 async with httpx.AsyncClient(timeout=30.0, proxy=self.proxy) as client:
                     return await client.post(
-                        _firecrawl_url("/v2/scrape"),
+                        _firecrawl_url("/v2/scrape", self._base_url),
                         json={"url": url, "formats": ["markdown"]},
                         headers=headers,
                     )

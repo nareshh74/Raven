@@ -52,6 +52,12 @@ _NO_LLM_GATES = {"verify": {"enabled": False}, "forceFinalize": {"enabled": Fals
 
 
 @pytest.fixture(autouse=True)
+def _no_firecrawl_base_env(monkeypatch):
+    monkeypatch.delenv("FIRECRAWL_API_URL", raising=False)
+    monkeypatch.delenv("FIRECRAWL_API_BASE_URL", raising=False)
+
+
+@pytest.fixture(autouse=True)
 def _public_dns(monkeypatch):
     """Keep the real URL checks, with deterministic DNS beside the stubbed HTTP.
 

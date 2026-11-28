@@ -253,7 +253,20 @@ def require_search(config: dict, host: dict | None = None) -> None:
 
     vendor, _ = selected_vendors(config)
     env_var = WEB_VENDOR_ENV_VARS.get(vendor, SEARCH_ENV_VAR)
-    if not SEARCH_PROVIDERS[vendor].needs_key or vendor_key(config, vendor, host) or os.environ.get(env_var):
+    if (
+        not SEARCH_PROVIDERS[vendor].needs_key
+        or vendor_key(config, vendor, host)
+        or os.environ.get(env_var)
+        or (
+            vendor == "firecrawl"
+            and (
+                render.dig(config, ("tools", "web", "providers", "firecrawl", "baseUrl"))
+                or render.dig(host, ("tools", "web", "providers", "firecrawl", "baseUrl"))
+                or os.environ.get("FIRECRAWL_API_BASE_URL")
+                or os.environ.get("FIRECRAWL_API_URL")
+            )
+        )
+    ):
         return
     raise SystemExit(
         f"error: search has no key for {vendor}; put RESEARCH_{env_var} in "
@@ -464,6 +477,17 @@ def render_config(source: Path) -> Path:
     for vendor, slice_path in slots:
         if key := vendor_key(config, vendor, host):
             render.put(flow_slice, slice_path, key)
+    firecrawl_base = (
+        render.dig(config, ("tools", "web", "providers", "firecrawl", "baseUrl"))
+        or render.dig(host, ("tools", "web", "providers", "firecrawl", "baseUrl"))
+        or os.environ.get("FIRECRAWL_API_BASE_URL")
+        or os.environ.get("FIRECRAWL_API_URL")
+    )
+    if firecrawl_base:
+        if search_vendor == "firecrawl":
+            render.put(flow_slice, ("search", "baseUrl"), firecrawl_base)
+        if fetch_vendor == "firecrawl":
+            render.put(flow_slice, ("fetch", "baseUrl"), firecrawl_base)
     log(f"[run] web: search={search_vendor} fetch={fetch_vendor}")
     # Same mirror, same reason as the web keys: the fork's assembly was CALLED
     # with the window the loop had resolved, so both observers that divide by it

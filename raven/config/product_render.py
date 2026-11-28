@@ -205,11 +205,13 @@ def inherit_web_vendors(
             put(config, slot, own)
 
     own_keys = own_keys or {}
+    env_firecrawl_base = bool(os.environ.get("FIRECRAWL_API_BASE_URL") or os.environ.get("FIRECRAWL_API_URL"))
     own = {
         vendor
         for vendor in WEB_VENDOR_ENV_VARS
         if dig(config, ("tools", "web", "providers", vendor, "apiKey"))
         or ((name := own_keys.get(vendor)) and lookup(name))
+        or (vendor == "firecrawl" and bool(dig(config, ("tools", "web", "providers", "firecrawl", "baseUrl"))))
     }
     for vendors, slot in (
         (frozenset(get_args(WebSearchProvider)), ("tools", "web", "search", "provider")),
@@ -222,10 +224,18 @@ def inherit_web_vendors(
             or bool(dig(host, ("tools", "web", "providers", chosen, "apiKey")))
             or bool(borrowed_web_key(chosen, config.get("providers") or {}))
             or bool(borrowed_web_key(chosen, host.get("providers") or {}))
+            or (
+                chosen == "firecrawl"
+                and (bool(dig(host, ("tools", "web", "providers", "firecrawl", "baseUrl"))) or env_firecrawl_base)
+            )
         )
         if (any(vendor in vendors for vendor in own) and chosen not in own) or not payable:
             continue
         put(config, slot, chosen)
+
+    firecrawl_base_slot = ("tools", "web", "providers", "firecrawl", "baseUrl")
+    if not dig(config, firecrawl_base_slot) and (host_base := dig(host, firecrawl_base_slot)):
+        put(config, firecrawl_base_slot, host_base)
 
     selected = {
         dig(config, ("tools", "web", "search", "provider")),
