@@ -23,7 +23,7 @@ interface Row { id: string; title?: string }
 
 async function harness({
   reject = null as { code?: number; message?: string } | null, draft = false, current = 's1',
-  create = false, failSends = 0,
+  create = false, failSends = 0, failAutonomy = null as 'refused' | 'offline' | null,
 } = {}) {
   const log: unknown[][] = []
   const notes: Array<Record<string, unknown> | undefined> = []
@@ -52,7 +52,7 @@ async function harness({
         splitAtts: (t: string) => readMessage(t),
         unpitch: () => {},
       },
-      'src/features/rail/store': { markNew: () => {}, draw: () => {}, endRename: () => {} },
+      'src/features/rail/store': { markNew: () => {}, draw: () => log.push(['sessionDraw']), endRename: () => {} },
       'src/state/sheetRack': { forget: () => {} },
       'src/state/session/rows': {
         sess: (id: string) => rows.find((r) => r.id === id),
@@ -83,7 +83,7 @@ async function harness({
       'src/lib/dom': { $: looseQuery() },
       'src/lib/session': { current: () => current, setCurrent: () => {} },
       'src/features/rail/title': { plainTitle: (s: unknown) => String(s) },
-      'src/state/toast': { show: () => {} },
+      'src/state/toast': { show: (text: string) => log.push(['toast', text]) },
       'src/state/ctxWindow': { set: () => {} },
       'src/lib/notifications': { show: () => {} },
       'src/state/banner': { draw: () => {} },
@@ -113,6 +113,13 @@ async function harness({
   let turnSends = 0
   await fakeGateway((method: string, params: unknown) => {
     asked.push([method, params])
+    if (method === 'config.set' && failAutonomy) {
+      if (failAutonomy === 'offline') throw new Error('offline')
+      return { applied: false, previous: null }
+    }
+    if (method === 'config.set') return { applied: true, previous: null }
+    if (method === 'config.get') return { config: { 'agents.defaults.autonomyMode': 'balanced' } }
+    if (method === 'turn.subscribe') return { subscription_id: 'sub-s1', running: false }
     if (method === 'turn.send') {
       turnSends += 1
       const refusal = reject || (turnSends <= failSends ? { code: -32602, message: 'unknown field: busy' } : null)
@@ -134,6 +141,7 @@ async function harness({
   registry.adopt(draft ? null : 's1')
   return {
     runtime,
+    autonomy: await import('../autonomy'),
     registry,
     log,
     notes,
@@ -148,6 +156,33 @@ async function harness({
 }
 
 afterEach(() => { turn._resetForTests() })
+
+describe('session autonomy sends', () => {
+  it.each(['refused', 'offline'] as const)('subscribes and reconciles when a staged autonomy write is %s', async (failAutonomy) => {
+    const h = await harness({ draft: true, create: true, failAutonomy })
+    await h.autonomy.pickSession('manual')
+    await expect(h.runtime.promote()).resolves.toBe('s1')
+    expect(h.registry.viewRuntime().subscriptionId).toBe('sub-s1')
+    expect(h.did('sessionDraw')).not.toHaveLength(0)
+    expect(h.did('toast')).not.toHaveLength(0)
+    expect(h.autonomy.get().session).toBe('balanced')
+    expect(h.autonomy.ready(h.registry.viewRuntime())).toBeUndefined()
+  })
+
+  it('keeps the session choice across sends without a prompt override', async () => {
+    const h = await harness()
+    await h.autonomy.load()
+    await h.autonomy.pickSession('manual')
+    h.runtime.send('first manual turn')
+    await h.tick()
+    turn.dispatch({ type: 'idle' })
+    h.runtime.send('second manual turn')
+    await h.tick()
+    expect(h.sends().map((send) => send.content)).toEqual(['first manual turn', 'second manual turn'])
+    expect(h.sends().every((send) => !('autonomy_mode' in send))).toBe(true)
+    expect(h.autonomy.get().session).toBe('manual')
+  })
+})
 
 describe('the files a message hands to the turn', () => {
   /* The note is the record of what was handed over, and the turn receives its

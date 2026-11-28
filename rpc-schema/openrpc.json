@@ -2035,6 +2035,24 @@
           "schema": {
             "type": "string"
           }
+        },
+        {
+          "name": "session_id",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scope",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": [
+              "session",
+              "default"
+            ]
+          }
         }
       ],
       "result": {

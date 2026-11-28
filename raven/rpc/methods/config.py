@@ -129,15 +129,6 @@ def _validate_language(value: Any) -> str:
     return value
 
 
-def _validate_autonomy_mode(value: Any) -> str:
-    if value not in ("manual", "balanced", "auto"):
-        raise ConfigValidationError(
-            "agents.defaults.autonomyMode must be 'manual', 'balanced' or 'auto'",
-            data={"field": "agents.defaults.autonomyMode", "got": repr(value)},
-        )
-    return value
-
-
 def _apply_language(value: Any) -> None:
     """Move the process language with the file.
 
@@ -151,6 +142,15 @@ def _apply_language(value: Any) -> None:
     from raven import i18n
 
     i18n.set_language(str(value))
+
+
+def _validate_autonomy_mode(value: Any) -> str:
+    if not isinstance(value, str) or value not in ("manual", "balanced", "auto"):
+        raise ConfigValidationError(
+            "autonomy mode must be 'manual', 'balanced' or 'auto'",
+            data={"field": "agents.defaults.autonomyMode", "got": repr(value)},
+        )
+    return value
 
 
 _VALIDATORS: dict[str, Callable[[Any], Any]] = {
@@ -315,7 +315,7 @@ def _unset_nested(payload: dict[str, Any], dotted_key: str) -> Any | None:
 # ---------------------------------------------------------------------------
 
 
-async def config_get(params: dict) -> dict:
+async def config_get(params: dict, *, agent_loop_factory: "AgentLoopFactory | None" = None) -> dict:
     """Return values for whitelisted keys.
 
     Spec §3.6: unknown keys are silently omitted (NOT an error).
@@ -344,14 +344,24 @@ async def config_get(params: dict) -> dict:
         from raven.permissions.session import session_mode
 
         out["permissions.mode"] = session_mode(session_id) or out["permissions.mode"]
+    key = "agents.defaults.autonomyMode"
+    if key in out:
+        from raven.config.live import LiveConfig, _live_autonomy_mode
+
+        out[key] = _live_autonomy_mode(LiveConfig(_config_path()))
+        if isinstance(session_id, str) and session_id:
+            loop = agent_loop_factory() if agent_loop_factory is not None else None
+            if loop is not None:
+                mode = loop.sessions.get_or_create(session_id).metadata.get("autonomy_mode")
+                if mode in ("manual", "balanced", "auto"):
+                    out[key] = mode
     return {"config": out}
 
 
 def _session_scope(params: dict, key: str) -> tuple[str | None, bool]:
     """The conversation a scoped write names, and whether the write stays with it.
 
-    Shared by the two keys with a per-conversation reading, ``model`` and
-    ``permissions.mode``. With a ``session_id`` the write is scoped to that
+    Shared by keys with a per-conversation reading. With a ``session_id`` the write is scoped to that
     conversation unless ``scope="default"`` says otherwise; without one it moves
     the default a new conversation starts on. ``both`` is the model switch's
     third scope (this conversation and the default); a permission mode has no
@@ -436,6 +446,12 @@ async def config_set(
 
     validated = _VALIDATORS[key](raw_value)
 
+    if key == "agents.defaults.autonomyMode":
+        session_id, session_scoped = _session_scope(params, key)
+        if session_scoped:
+            previous = _write_session_autonomy(agent_loop_factory, session_id or "", validated)
+            return {"applied": True, "previous": previous}
+
     if key == "permissions.mode":
         session_id, session_scoped = _session_scope(params, key)
         if session_scoped:
@@ -461,7 +477,7 @@ async def config_set(
     return {"applied": True, "previous": previous}
 
 
-async def config_unset(params: dict) -> dict:
+async def config_unset(params: dict, *, agent_loop_factory: "AgentLoopFactory | None" = None) -> dict:
     """Remove a stored override so the default answers again.
 
     Same whitelist as ``config.set``; ``"model"`` is refused because it is a
@@ -496,6 +512,13 @@ async def config_unset(params: dict) -> dict:
             data={"field": key, "writable": list(CONFIG_WRITABLE_KEYS)},
         )
 
+    if key == "agents.defaults.autonomyMode":
+        session_id, session_scoped = _session_scope(params, key)
+        if session_scoped:
+            previous = _write_session_autonomy(agent_loop_factory, session_id or "", None)
+            default = (await config_get({"keys": [key]}))["config"][key]
+            return {"removed": previous is not None, "previous": previous, "default": default}
+
     payload = _load_config()
     previous = _unset_nested(payload, _STORAGE_PATHS[key])
     if previous is not None:
@@ -503,6 +526,20 @@ async def config_unset(params: dict) -> dict:
     if key == "language":
         _apply_language(_DEFAULTS[key])
     return {"removed": previous is not None, "previous": previous, "default": _DEFAULTS[key]}
+
+
+def _write_session_autonomy(factory: "AgentLoopFactory | None", session_id: str, mode: str | None) -> str | None:
+    """Persist the conversation choice, including before its first turn."""
+    loop = factory() if factory is not None else None
+    if loop is None:
+        raise ConfigValidationError("session autonomy requires an active session manager")
+    session = loop.sessions.get_or_create(session_id)
+    previous = session.metadata.get("autonomy_mode")
+    patch = {"autonomy_mode": mode}
+    session.metadata.update(patch)
+    if not loop.sessions.append_metadata_patch(session_id, patch):
+        loop.sessions.save(session)
+    return previous
 
 
 def _provider_has_credentials(provider: str) -> bool:
@@ -814,9 +851,15 @@ def register_config_methods(
     async def _set(params: dict) -> dict:
         return await config_set(params, agent_loop_factory=agent_loop_factory, ensure_stack=ensure_stack)
 
-    dispatcher.register("config.get", config_get)
+    async def _get(params: dict) -> dict:
+        return await config_get(params, agent_loop_factory=agent_loop_factory)
+
+    async def _unset(params: dict) -> dict:
+        return await config_unset(params, agent_loop_factory=agent_loop_factory)
+
+    dispatcher.register("config.get", _get)
     dispatcher.register("config.set", _set)
-    dispatcher.register("config.unset", config_unset)
+    dispatcher.register("config.unset", _unset)
 
 
 __all__ = [

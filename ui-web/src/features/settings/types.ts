@@ -329,5 +329,4 @@ export interface SettingsSource {
      MEANS differs between the modes -- live persists it through config.language,
      which also drives the TUI and the language the agent replies in. */
   setLang(lang: string): void
-  setAutonomyMode(v: string): void
 }

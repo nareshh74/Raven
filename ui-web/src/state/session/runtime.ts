@@ -37,6 +37,7 @@ import { show as ntfPush } from '../../lib/notifications'
 import { current as sessionCurrent, setCurrent as sessionSet } from '../../lib/session'
 import { hasNamingFlag, hasTurnDuration } from '../../rpc/capabilities'
 import { gateway } from '../../rpc/gateway'
+import * as autonomy from '../autonomy'
 import { ask as confirmAsk } from '../confirm'
 import { load as loadEffort } from '../effort'
 import { adopt as adoptBases, staged as stagedBases } from '../mentions'
@@ -479,10 +480,12 @@ export function dispatchSend(text: string, failed: (e: unknown) => void, moveOn?
      at all, and reading that as "declined" would tear down a placeholder
      while a title really is on its way. Which servers carry it is
      rpc/capabilities.ts's question; what the verdict means stays here. */
-  gateway()
+  const send = () => gateway()
     .call('turn.send', {
       session_key: current as string, content: text, ...mediaOf(text), ...(moveOn ? { move_on: moveOn } : {}),
     })
+  const waiting = autonomy.ready(viewRuntime())
+  ;(waiting ? waiting.then(send) : send())
     .then((r) => {
       if (ran && r.accepted !== false) rememberUsed(ran)
       if (hasNamingFlag(r) && r.naming === false) namingDeclined(current as string)
@@ -706,6 +709,8 @@ export async function promote(preview?: string, atPointer?: (id: string) => void
   await applyStagedTier(draftRt, s.id, gen)
   await applyStagedEffort(draftRt, s.id, gen)
   await applyStagedPerm(draftRt, s.id, gen)
+  const stagedAutonomy = autonomy.applyDraft(draftRt, s.id)
+  if (stagedAutonomy) await stagedAutonomy
   sessionDraw()
   await subscribe(s.id)
   return s.id

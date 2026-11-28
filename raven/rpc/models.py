@@ -2834,6 +2834,8 @@ class ConfigSetParams(_Strict):
 
 class ConfigUnsetParams(_Strict):
     key: str
+    session_id: str | None = None
+    scope: Literal["session", "default"] | None = None
 
 
 class ConfigUnsetResult(_Strict):

@@ -3681,6 +3681,8 @@ export interface ConfigSetResult {
 }
 export interface ConfigUnsetParams {
   key: string;
+  session_id?: string;
+  scope?: 'session' | 'default';
 }
 export interface ConfigUnsetResult {
   removed: boolean;

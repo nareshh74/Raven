@@ -35,13 +35,6 @@ describe('general page', () => {
     expect(calls).toEqual([['setLang', 'en']])
   })
 
-  it('the autonomy mode pick goes to the source', async () => {
-    const { calls } = install()
-    await mount('general')
-    await act(async () => { fireEvent.click(screen.getByText('gui.settings.general.autonomy_auto')) })
-    expect(calls).toEqual([['setAutonomyMode', 'auto']])
-  })
-
   it('the theme pick writes the look store and the document attribute, not the config', async () => {
     const { calls } = install()
     await mount('general')
@@ -59,7 +52,7 @@ describe('general page', () => {
   it('says what each setting is for under its name', async () => {
     install()
     await mount('general')
-    for (const k of ['language', 'autonomyMode', 'theme']) {
+    for (const k of ['language', 'theme']) {
       const title = screen.getByText('gui.settings.general.' + k, { selector: '.settings-gen-t' })
       expect(title.nextElementSibling!.textContent).toBe('gui.settings.general.' + k + '_sub')
     }

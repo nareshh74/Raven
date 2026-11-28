@@ -1283,6 +1283,11 @@ class AgentLoop(TurnPathMixin, WiringMixin, McpGlueMixin, OrganGlueMixin):
             # bare session key. Strip the lane back to its session, as the
             # direct-chat record path does (see raven.spine.turn.session_of).
             binding = self._with_live_window(self.binding_for_session(session_of(session_key)))
+            from raven.config.live import AUTONOMY_MODES, autonomy_mode
+
+            autonomy_session = self.sessions.get_or_create(req.parent_session or session_of(session_key))
+            stored_autonomy = autonomy_session.metadata.get("autonomy_mode")
+            autonomy = stored_autonomy if stored_autonomy in AUTONOMY_MODES else autonomy_mode(self._live_config)
             resolution = await self._resolve_playbook_turn(req, session_key, binding)
             delegate_table = resolution.table
             if resolution.active:
@@ -1353,7 +1358,7 @@ class AgentLoop(TurnPathMixin, WiringMixin, McpGlueMixin, OrganGlueMixin):
                 # Beside the binding and for the same reason: the settings a
                 # turn reads more than once answer the same way all the way
                 # through it.
-                self._turn_scope(),
+                self._turn_scope(autonomy=autonomy),
                 self.tools.session_scope_for(session_key),
                 # Above `turn_scope`, which is the whole of why it is here and
                 # not in the turn body. That freeze decides which tools this

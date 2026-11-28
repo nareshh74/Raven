@@ -15,7 +15,6 @@ import { APP_VERSION, appVersionSet, askUpgrade, showUpNote, upgradeLatest } fro
 import { t } from '../../i18n/t'
 import { current as sessionCurrent } from '../../lib/session'
 import { hasUpdateFlag } from '../../rpc/capabilities'
-import { gateway } from '../../rpc/gateway'
 import { pick as langPick } from '../../state/lang/pick'
 import { setPermPersister } from '../../state/perm'
 import { staging } from '../../state/session/staging'
@@ -23,7 +22,7 @@ import { show as toast } from '../../state/toast'
 import * as chip from '../model/chip'
 import { setChipPainter } from '../model/source'
 import { checkVersion, savePermMode, setSettingsChrome } from './source'
-import { redraw as redrawSettings, refreshSoon } from './store'
+import { redraw as redrawSettings } from './store'
 
 /* The version check the rail-foot notice already does, on demand. No new
    backend: system.version carries the answer. */
@@ -72,9 +71,6 @@ export function install(): void {
     /* Not awaited: the pick repaints synchronously and the persist speaks for
        itself if it fails. */
     setLang: (v: string) => { void langPick(v as 'en' | 'zh', { persist: true }) },
-    setAutonomyMode: (v: string) => {
-      void gateway().call('config.set', { key: 'agents.defaults.autonomyMode', value: v }).then(() => { refreshSoon() })
-    },
   })
 
   /* The pick's write-back. In a conversation it reaches that conversation only

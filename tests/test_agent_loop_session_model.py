@@ -21,6 +21,7 @@ spawned under.
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 
 import pytest
 
@@ -84,6 +85,67 @@ def _binding(name: str, model: str) -> ModelBinding:
 async def _run(loop: AgentLoop, session_key: str, body) -> object:
     loop._run_turn = body
     return await loop.run_turn(_req(session_key), None, None)
+
+
+@pytest.mark.asyncio
+async def test_autonomy_resolves_session_then_live_default(tmp_path) -> None:
+    from raven.config.live import LiveConfig, autonomy_mode
+    from raven.context_engine.segments.render import AUTONOMY_GUIDELINES, autonomy_guideline
+
+    loop = _loop(tmp_path)
+    loop._live_config = LiveConfig(tmp_path / "absent-config.json")
+    loop.sessions.get_or_create("tui:a").metadata["autonomy_mode"] = "auto"
+    seen = []
+
+    async def body(*args, **kwargs):
+        mode = autonomy_mode(loop._live_config)
+        assert autonomy_guideline() == AUTONOMY_GUIDELINES[mode]
+        seen.append(mode)
+        return "done"
+
+    loop._run_turn = body
+    await loop.run_turn(_req("tui:a"), None, None)
+    await loop.run_turn(_req("tui:b"), None, None)
+    direct = replace(_req(direct_lane("tui:a", "Raven", "h1")), parent_session="tui:a")
+    await loop.run_turn(direct, None, None)
+    assert seen == ["auto", "balanced", "auto"]
+    assert autonomy_mode(loop._live_config) == "balanced"
+    assert loop.sessions.get_or_create("tui:a").metadata["autonomy_mode"] == "auto"
+
+
+@pytest.mark.asyncio
+async def test_running_autonomy_is_frozen_and_isolated_between_sessions(tmp_path) -> None:
+    from raven.config.live import LiveConfig, autonomy_mode
+    from raven.rpc.methods.config import config_set
+
+    loop = _loop(tmp_path)
+    loop._live_config = LiveConfig(tmp_path / "absent-config.json")
+    loop.sessions.get_or_create("tui:a").metadata["autonomy_mode"] = "manual"
+    entered, release = asyncio.Event(), asyncio.Event()
+    seen = []
+
+    async def body(req, *args, **kwargs):
+        before = autonomy_mode(loop._live_config)
+        if req.conversation == "tui:a":
+            entered.set()
+            await release.wait()
+        seen.append((req.conversation, before, autonomy_mode(loop._live_config)))
+        return "done"
+
+    loop._run_turn = body
+    running = asyncio.create_task(loop.run_turn(_req("tui:a"), None, None))
+    await entered.wait()
+    try:
+        await config_set(
+            {"key": "agents.defaults.autonomyMode", "value": "auto", "scope": "session", "session_id": "tui:a"},
+            agent_loop_factory=lambda: loop,
+        )
+        await loop.run_turn(_req("tui:b"), None, None)
+    finally:
+        release.set()
+        await running
+    await loop.run_turn(_req("tui:a"), None, None)
+    assert seen == [("tui:b", "balanced", "balanced"), ("tui:a", "manual", "manual"), ("tui:a", "auto", "auto")]
 
 
 # ---------------------------------------------------------------------------

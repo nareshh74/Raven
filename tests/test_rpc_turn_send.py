@@ -368,6 +368,17 @@ async def test_turn_send_rejects_an_unknown_playbook_mode() -> None:
         )
 
 
+async def test_turn_send_rejects_prompt_scoped_autonomy() -> None:
+    scheduler = FakeScheduler()
+    with pytest.raises(InvalidParamsError):
+        await turn_send(
+            {"session_key": "tui:default", "content": "hi", "autonomy_mode": "auto"},
+            scheduler=scheduler,
+            turn_ids={},
+        )
+    assert scheduler.submitted == []
+
+
 # --- End-to-end via Dispatcher ---
 
 
