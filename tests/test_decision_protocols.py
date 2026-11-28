@@ -142,6 +142,38 @@ async def test_schema_rejection_is_cached_without_retrying_the_turn():
 
 
 @pytest.mark.asyncio
+async def test_chat_adapter_falls_back_schema_to_tools_to_plain_json():
+    import httpx
+
+    calls = []
+
+    async def chat(messages, **kwargs):
+        calls.append(kwargs)
+        if "response_format" in kwargs or "tools" in kwargs:
+            response = httpx.Response(400, request=httpx.Request("POST", "https://gateway.invalid/chat"))
+            response.raise_for_status()
+        return SimpleNamespace(content='{"selected": ["0"]}', finish_reason="stop")
+
+    b = ModelBinding(SimpleNamespace(chat=chat), "plain-json-fallback")
+    assert await select_skills_with_decision_model(b, "task", [("a", "desc")]) is None
+    assert "response_format" in calls[0]
+    assert await select_skills_with_decision_model(b, "task", [("a", "desc")]) is None
+    assert "tools" in calls[1] and "response_format" not in calls[1]
+    assert await select_skills_with_decision_model(b, "task", [("a", "desc")]) == ["a"]
+    assert "tools" not in calls[2] and "response_format" not in calls[2]
+
+
+def test_provider_config_model_protocols_rejects_decision_dialects():
+    from pydantic import ValidationError
+    from raven.config.schema import ProviderConfig
+
+    cfg = ProviderConfig(model_protocols={"gpt-4o": "responses"})
+    assert cfg.model_protocols == {"gpt-4o": "responses"}
+    with pytest.raises(ValidationError):
+        ProviderConfig(model_protocols={"alias": "criteria_map"})
+
+
+@pytest.mark.asyncio
 async def test_native_transport_does_not_follow_cross_origin_redirects():
     import time
     import httpx

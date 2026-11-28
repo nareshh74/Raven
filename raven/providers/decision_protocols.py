@@ -82,9 +82,6 @@ def resolve_decision_capability(model, provider_name, section, spec=None, served
         if capability is not None:
             values = {f.name: read(capability, f.name) for f in fields(DecisionCapability)}
             merged.update({k: v for k, v in values.items() if v is not None})
-    protocol = entry(read(section, "model_protocols", {}))
-    if protocol in _DECISION_ADAPTERS:
-        merged["protocol_id"] = protocol
     return DecisionCapability(**merged)
 
 
@@ -194,7 +191,7 @@ class ChatAdapter:
     supports_probabilities = False
 
     def __init__(self) -> None:
-        self._schema_unsupported: set[tuple[int, str]] = set()
+        self._fallback_stage: dict[tuple[int, str], Literal["schema", "tools", "plain_json"]] = {}
 
     async def decide(self, binding, request, transport):
         ids = [c.opaque_id for c in request.candidates]
@@ -218,19 +215,21 @@ class ChatAdapter:
         )
         chat = provider.chat
         params = inspect.signature(chat).parameters
+        has_var_kw = any(p.kind == p.VAR_KEYWORD for p in params.values())
         key = (id(provider), binding.model)
         kwargs: dict[str, Any] = {
             "model": binding.model, "temperature": 0.0,
             "max_tokens": 128 if request.use_case == "skills" else 64,
         }
-        schema_ok = key not in self._schema_unsupported and (
-            "response_format" in params or any(p.kind == p.VAR_KEYWORD for p in params.values())
-        )
-        if schema_ok:
+        stage = self._fallback_stage.get(key, "schema")
+        mode: Literal["schema", "tools", "plain_json"] = "plain_json"
+        if stage == "schema" and ("response_format" in params or has_var_kw):
+            mode = "schema"
             kwargs["response_format"] = {"type": "json_schema", "json_schema": {
                 "name": "decision", "strict": True, "schema": schema,
             }}
-        elif "tools" in params or any(p.kind == p.VAR_KEYWORD for p in params.values()):
+        elif stage in ("schema", "tools") and ("tools" in params or has_var_kw):
+            mode = "tools"
             kwargs["tools"] = [{"type": "function", "function": {
                 "name": "record_decision", "description": "Record selected option indices; executes no action.",
                 "parameters": schema,
@@ -240,8 +239,11 @@ class ChatAdapter:
             reply = await chat(messages, **kwargs)
         except Exception as exc:
             status = getattr(exc, "status_code", None) or getattr(getattr(exc, "response", None), "status_code", None)
-            if schema_ok and status in {400, 422}:
-                self._schema_unsupported.add(key)
+            if status in {400, 422}:
+                if mode == "schema":
+                    self._fallback_stage[key] = "tools"
+                elif mode == "tools":
+                    self._fallback_stage[key] = "plain_json"
             raise
         if getattr(reply, "finish_reason", None) == "error":
             raise ValueError("decision provider returned an error")

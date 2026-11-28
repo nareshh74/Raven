@@ -154,7 +154,7 @@ def test_provider_metadata_selects_dialect_without_names():
 
     cfg = Config.model_validate({"providers": {"custom": {
         "apiKey": "test", "apiBase": "https://gateway.invalid",
-        "modelProtocols": {"renamed": "choices_array"},
+        "modelOverlay": {"renamed": {"decision": {"protocolId": "choices_array"}}},
     }}})
     pool = ProviderPool(cfg)
     b = ModelBinding(SimpleNamespace(), "renamed", provider_name="custom", pool=pool)

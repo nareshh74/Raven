@@ -84,6 +84,10 @@ export function ModelPicker({ gw, launcher, onCancel, onSelect, scope, sessionId
   const [providerIdx, setProviderIdx] = useState(0)
   const [modelIdx, setModelIdx] = useState(0)
   const [stage, setStage] = useState<Stage>('provider')
+  const [decisionTarget, setDecisionTarget] = useState(false)
+  const [decisionProtocols, setDecisionProtocols] = useState<NonNullable<ModelOptionsResponse['decision_protocols']>>([])
+  const [decisionProtocolIdx, setDecisionProtocolIdx] = useState(-1)
+  const [decisionNotice, setDecisionNotice] = useState('')
   const [fromAddList, setFromAddList] = useState(false)
   const [keyInput, setKeyInput] = useState('')
   const [baseInput, setBaseInput] = useState('')
@@ -131,6 +135,7 @@ export function ModelPicker({ gw, launcher, onCancel, onSelect, scope, sessionId
 
       const next = r.providers ?? []
       setProviders(next)
+      setDecisionProtocols(r.decision_protocols ?? [])
       setCurrentModel(String(r.model ?? ''))
       setErr('')
       setLoading(false)
@@ -341,6 +346,15 @@ export function ModelPicker({ gw, launcher, onCancel, onSelect, scope, sessionId
   })
 
   useInput((ch, key) => {
+    if ((stage === 'provider' || stage === 'model') && key.tab && !keySaving) {
+      setDecisionTarget(value => !value)
+      setDecisionNotice('')
+      return
+    }
+    if (stage === 'model' && decisionTarget && ch.toLowerCase() === 'p' && !keySaving) {
+      setDecisionProtocolIdx(index => index + 1 >= decisionProtocols.length ? -1 : index + 1)
+      return
+    }
     // Key entry stage handles its own input (api_key + optional api_base)
     if (stage === 'key') {
       if (keySaving) {
@@ -823,7 +837,20 @@ export function ModelPicker({ gw, launcher, onCancel, onSelect, scope, sessionId
       const model = models[modelIdx]
 
       if (provider && model) {
-        onSelect(model, provider.slug)
+        if (decisionTarget) {
+          setKeySaving(true)
+          setErr('')
+          void gw.request<{ applied?: boolean; decisionModel?: { advisories?: { message: string }[] } }>('settings.set', {
+            key: 'decisionModel',
+            value: { model, provider: provider.slug, protocol: decisionProtocols[decisionProtocolIdx]?.id ?? null }
+          }).then(raw => {
+            const result = asRpcResult<{ applied?: boolean; decisionModel?: { advisories?: { message: string }[] } }>(raw)
+            if (!result?.applied) throw new Error('Decision model was not saved')
+            setDecisionNotice(result.decisionModel?.advisories?.map(item => item.message).join(' · ') || 'Decision model saved')
+          }).catch((error: unknown) => setErr(rpcErrorMessage(error))).finally(() => setKeySaving(false))
+        } else {
+          onSelect(model, provider.slug)
+        }
       } else {
         setStage('provider')
       }
@@ -1307,7 +1334,7 @@ export function ModelPicker({ gw, launcher, onCancel, onSelect, scope, sessionId
     return (
       <Box flexDirection="column" width={width}>
         <Text bold color={t.color.accent} wrap="truncate-end">
-          {adding ? 'Add a provider' : 'Select provider (step 1/2)'}
+          {adding ? 'Add a provider' : decisionTarget ? 'Decision model: select provider (step 1/2)' : 'Select provider (step 1/2)'}
         </Text>
 
         <Text color={t.color.muted} wrap="truncate-end">
@@ -1352,7 +1379,11 @@ export function ModelPicker({ gw, launcher, onCancel, onSelect, scope, sessionId
           {offset + VISIBLE < rows.length ? ` ↓ ${rows.length - offset - VISIBLE} more` : ' '}
         </Text>
 
-        <OverlayHint t={t}>↑/↓ select · Enter choose · d disconnect · Esc/q cancel</OverlayHint>
+        <OverlayHint t={t}>
+          {adding
+            ? '↑/↓ select · Enter choose · d disconnect · Esc/q cancel'
+            : '↑/↓ select · Enter choose · Tab role · d disconnect · Esc/q cancel'}
+        </OverlayHint>
       </Box>
     )
   }
@@ -1363,7 +1394,7 @@ export function ModelPicker({ gw, launcher, onCancel, onSelect, scope, sessionId
   return (
     <Box flexDirection="column" width={width}>
       <Text bold color={t.color.accent} wrap="truncate-end">
-        Select model (step 2/2)
+        {decisionTarget ? 'Decision model: select model (step 2/2)' : 'Select model (step 2/2)'}
       </Text>
 
       <Text color={t.color.muted} wrap="truncate-end">
@@ -1434,15 +1465,17 @@ export function ModelPicker({ gw, launcher, onCancel, onSelect, scope, sessionId
         {tagLegend(models.map(model => provider?.model_labels?.[model])) || ' '}
       </Text>
 
-      <Text color={t.color.muted} wrap="truncate-end">
-        {scope === 'default'
+      <Text color={decisionTarget && decisionNotice ? t.color.label : t.color.muted} wrap="truncate-end">
+        {decisionTarget
+          ? (decisionNotice || `Decision model · protocol: ${decisionProtocols[decisionProtocolIdx]?.display_name ?? 'Auto'} · p change protocol`)
+          : scope === 'default'
           ? 'scope: the default new sessions start on'
           : 'scope: this session  ·  /model <provider> <id> --default sets the new-session default'}
       </Text>
       <OverlayHint t={t}>
         {models.length
-          ? '↑/↓ select · Enter switch · a add · d/x delete · e endpoints · Esc back'
-          : 'a add model · e endpoints · Enter/Esc back · q close'}
+          ? '↑/↓ select · Enter switch · Tab role · a add · d/x delete · e endpoints · Esc back'
+          : 'a add model · Tab role · e endpoints · Enter/Esc back · q close'}
       </OverlayHint>
     </Box>
   )

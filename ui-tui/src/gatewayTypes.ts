@@ -427,6 +427,7 @@ export interface ModelOptionProvider {
 }
 
 export interface ModelOptionsResponse {
+  decision_protocols?: { id: string; display_name: string; supports_probabilities: boolean }[]
   model?: string
   provider?: string
   providers?: ModelOptionProvider[]

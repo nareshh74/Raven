@@ -111,8 +111,10 @@ async def test_live_discovery_cache_is_scoped_to_account_and_config_home(fake_ho
     monkeypatch.setattr(model_module, "_LIVE_MODEL_CACHE", {})
     section = ProviderConfig(api_base="https://gateway.invalid/v1", api_key="account-a")
     assert model_module._runtime_models("arbitrary", configured=True, section=section) == ("private-account-a",)
+    assert all("account-a" not in repr(key) for key in model_module._LIVE_MODEL_CACHE)
     section.api_key = "account-b"
     assert model_module._runtime_models("arbitrary", configured=True, section=section) == ("private-account-b",)
+    assert all("account-b" not in repr(key) for key in model_module._LIVE_MODEL_CACHE)
     other_home = fake_home / "another-home"
     monkeypatch.setattr(Path, "home", lambda: other_home)
     assert model_module._runtime_models("arbitrary", configured=True, section=section) == ("private-account-b",)

@@ -5792,6 +5792,15 @@
             "previous": {
               "$ref": "#/components/schemas/JsonValue"
             },
+            "decisionModel": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "additionalProperties": {
+                "$ref": "#/components/schemas/JsonValue"
+              }
+            },
             "warning": {
               "type": [
                 "string",

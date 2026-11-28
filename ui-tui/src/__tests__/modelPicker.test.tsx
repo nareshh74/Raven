@@ -111,6 +111,8 @@ interface MountExtras {
   nextProviders?: ModelOptionProvider[]
   /** Which scope the selection will apply. Defaults to the session-scoped open. */
   scope?: 'default' | 'session'
+  /** Optional decision_protocols list returned by `model.options`. */
+  decisionProtocols?: { id: string; display_name: string; supports_probabilities: boolean }[]
 }
 
 interface Harness {
@@ -139,7 +141,12 @@ const mount = (
       optionsCalls += 1
       const list = optionsCalls > 1 && extras?.nextProviders ? extras.nextProviders : providers
 
-      return Promise.resolve({ model: 'claude-sonnet-4-6', provider: 'anthropic', providers: list })
+      return Promise.resolve({
+        ...(extras?.decisionProtocols ? { decision_protocols: extras.decisionProtocols } : {}),
+        model: 'claude-sonnet-4-6',
+        provider: 'anthropic',
+        providers: list
+      })
     }
 
     return Promise.resolve(requestImpl ? requestImpl(method, params) : {})
@@ -915,6 +922,52 @@ describe('model labels', () => {
     await waitForFrame(h, 'step 2/2')
 
     expect(normalize(h.frame())).toContain('claude-sonnet-4-6')
+    h.unmount()
+  })
+})
+
+describe('decision model role target', () => {
+  it('switches to decision model role via Tab, cycles protocol via p, and saves via settings.set', async () => {
+    const anyProvider: ModelOptionProvider = {
+      ...anthropic,
+      models: ['fast-alias-v1'],
+      total_models: 1
+    }
+    const h = mount(
+      [anyProvider],
+      method =>
+        method === 'settings.set'
+          ? {
+              applied: true,
+              decisionModel: {
+                advisories: [{ code: 'protocol_auto_chat', message: 'Protocol defaults to chat.' }]
+              }
+            }
+          : {},
+      {
+        decisionProtocols: [
+          { display_name: 'Chat', id: 'chat', supports_probabilities: false },
+          { display_name: 'Criteria Map', id: 'criteria_map', supports_probabilities: true }
+        ]
+      }
+    )
+    await waitForFrame(h, 'Anthropic')
+
+    await h.type('\t')
+    await waitForFrame(h, 'cision model')
+    await h.type(ENTER)
+    await waitForFrame(h, 'protocol:')
+    await h.type('p')
+    await delay(30)
+    await h.type(ENTER)
+    await waitForFrame(h, 'defaults')
+
+    expect(h.gw.request).toHaveBeenCalledWith('settings.set', {
+      key: 'decisionModel',
+      value: { model: 'fast-alias-v1', protocol: 'chat', provider: 'anthropic' }
+    })
+    expect(h.onSelect).not.toHaveBeenCalled()
+
     h.unmount()
   })
 })

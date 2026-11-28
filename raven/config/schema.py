@@ -437,9 +437,9 @@ class ProviderConfig(Base):
     # Optional wire default. When omitted, GPT models use Responses and Claude
     # models use Anthropic Messages; model_protocols can override either rule.
     protocol: Literal["chat", "responses", "anthropic"] | None = None
-    model_protocols: dict[str, str] = Field(default_factory=dict)
+    model_protocols: dict[str, Literal["chat", "responses", "anthropic"]] = Field(default_factory=dict)
     decision: DecisionCapability | None = None
-    supports_models_endpoint: bool = True
+    supports_models_endpoint: bool = False
     # Custom headers (e.g. APP-Code for AiHubMix) -- can carry a secret, so
     # display faces redact the values (keys stay visible).
     extra_headers: dict[str, str] | None = Field(default=None, json_schema_extra={"secret": True})
@@ -498,14 +498,7 @@ class ProviderConfig(Base):
             return value
         from raven.providers.protocol import normalize_protocol
 
-        from raven.providers.decision_protocols import get_decision_adapter
-        from raven.providers.protocol import ALL_PROTOCOLS
-
-        normalized = {str(model): normalize_protocol(protocol) for model, protocol in value.items()}
-        for protocol in normalized.values():
-            if protocol not in ALL_PROTOCOLS:
-                get_decision_adapter(protocol)
-        return normalized
+        return {str(model): normalize_protocol(protocol) for model, protocol in value.items()}
 
     @model_validator(mode="after")
     def _one_key_source(self) -> "ProviderConfig":

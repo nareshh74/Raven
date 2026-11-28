@@ -25,6 +25,8 @@ providers cannot have keys written from the picker — that is gated to
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import time
 from functools import partial
 from typing import TYPE_CHECKING, Any
@@ -196,21 +198,28 @@ def _runtime_models(slug: str, *, configured: bool, section: Any = _UNLOADED) ->
         return ()
 
     spec = find_by_name(slug)
-    if not getattr(spec, "supports_models_endpoint", True):
-        return ()
+    spec_supports = bool(getattr(spec, "supports_models_endpoint", False))
 
     if section is _UNLOADED:
         try:
             cfg = get_provider_config(slug, redact_secrets=False)
         except KeyError:
             cfg = {}
-        if not cfg.get("supports_models_endpoint", cfg.get("supportsModelsEndpoint", True)):
+        explicit = cfg.get("supports_models_endpoint")
+        if explicit is None:
+            explicit = cfg.get("supportsModelsEndpoint")
+        if not (spec_supports if explicit is None else bool(explicit)):
             return ()
         api_base = str(cfg.get("api_base") or "")
         snapshot = cfg
     else:
         api_base = str(getattr(section, "api_base", None) or "")
-        if not getattr(section, "supports_models_endpoint", True):
+        explicit = (
+            getattr(section, "supports_models_endpoint", None)
+            if section is not None and "supports_models_endpoint" in getattr(section, "model_fields_set", set())
+            else None
+        )
+        if not (spec_supports if explicit is None else bool(explicit)):
             return ()
         snapshot = section.model_dump() if section is not None else {}
 
@@ -218,8 +227,11 @@ def _runtime_models(slug: str, *, configured: bool, section: Any = _UNLOADED) ->
 
     api_key = str(snapshot.get("api_key") or snapshot.get("apiKey") or "")
     extra_headers = snapshot.get("extra_headers") or snapshot.get("extraHeaders") or {}
-    header_sig = tuple(sorted((str(k), str(v)) for k, v in extra_headers.items())) if isinstance(extra_headers, dict) else ()
-    cache_key = (slug, api_base, api_key, header_sig, str(get_config_path()))
+    header_sig = sorted((str(k), str(v)) for k, v in extra_headers.items()) if isinstance(extra_headers, dict) else []
+    cred_digest = hashlib.sha256(
+        json.dumps([api_key, header_sig], separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    cache_key = (slug, api_base, cred_digest, str(get_config_path()))
     now = time.monotonic()
     cached = _LIVE_MODEL_CACHE.get(cache_key)
     if cached and now - cached[0] < _LIVE_MODEL_CACHE_TTL_SECONDS:
