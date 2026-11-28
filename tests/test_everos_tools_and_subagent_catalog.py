@@ -72,7 +72,8 @@ async def test_everos_tools_validation_errors_on_empty_input() -> None:
 
 
 def test_subagent_skill_catalog_passes_live_skill_forge_config(tmp_path: Path) -> None:
-    assert RavenLoopBackend._MAX_ITERATIONS == 500
+    backend = RavenLoopBackend(provider=SimpleNamespace(), model="test", agent_home=tmp_path, max_iterations=500)
+    assert backend._resolved_max_iterations() == 500
     captured_configs: list[object] = []
     sentinel_sf = SimpleNamespace(enabled=False, always_max=20, local_dirs=[], blocklist=[])
     fake_cfg = SimpleNamespace(skill_forge=sentinel_sf)
