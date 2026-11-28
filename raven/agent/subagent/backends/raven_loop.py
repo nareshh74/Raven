@@ -238,7 +238,6 @@ class RavenLoopBackend:
 
     kind = "raven-loop"
     streams = True
-    _MAX_ITERATIONS = 500
 
     def __init__(
         self,
@@ -261,6 +260,7 @@ class RavenLoopBackend:
         retry_delays: "Sequence[float] | None" = None,
         retry_after_output: bool = False,
         pin: Callable[[], ModelBinding | None] | None = None,
+        max_iterations: int | Callable[[], int | None] | None = None,
     ) -> None:
         self.provider = provider
         self.model = model
@@ -292,7 +292,21 @@ class RavenLoopBackend:
         # it as "unset" put 105 seconds back on a deployment that turned them off.
         self.retry_delays = _STREAM_RETRY_DELAYS if retry_delays is None else tuple(retry_delays)
         self.retry_after_output = retry_after_output
+        # Resolved per run, never fixed here: the manager hands in the live config
+        # value, so a sub-agent's budget is its agent's, not this backend's.
+        self._max_iterations: Callable[[], int | None] | None = (
+            (lambda: max_iterations) if isinstance(max_iterations, int) else max_iterations
+        )
         self.mcp_source: McpSource | None = None
+
+    def _resolved_max_iterations(self) -> int | None:
+        resolver = self._max_iterations
+        budget = resolver() if resolver is not None else None
+        # The config helper reads 0 and an explicit null as "no cap"; a negative
+        # value is not a budget either.
+        if budget is not None and budget > 0:
+            return budget
+        return None
 
     def _web_key(self, vendor: str) -> str | None:
         return resolve_vendor_key(vendor, self.web_provider_keys, self.search_api_key, self.jina_api_key)
@@ -592,6 +606,7 @@ class RavenLoopBackend:
             ]
         )
         iteration = 0
+        max_iterations = self._resolved_max_iterations()
         participants = charter_mod.charter_participants()
         # The question a generated function reads is the task the dispatching
         # model wrote, not the one this lane hands the loop: the charter's
@@ -626,7 +641,7 @@ class RavenLoopBackend:
                 mode_overlay=None,
                 phase=phase,
                 tools=tuple(tools.get_definitions()),
-                max_iterations=self._MAX_ITERATIONS,
+                max_iterations=max_iterations,
             )
 
         if participants:
@@ -664,7 +679,7 @@ class RavenLoopBackend:
         # those files reaches the record. Per run, like everything else here: the
         # backend object is shared and other runs write beside this one.
         removal_watch = RemovalWatch()
-        while iteration < self._MAX_ITERATIONS:
+        while max_iterations is None or iteration < max_iterations:
             if report and report.requested.is_set():
                 break
             iteration += 1
@@ -940,8 +955,9 @@ class RavenLoopBackend:
             # or it ended its turn with nothing. What it gathered is all in
             # ``messages``, so ask once more with no tools at all: unable to call
             # another, it answers from what it has. Observed need -- a research
-            # node spent all fifteen rounds on web_fetch and wrote nothing, and
-            # the run's whole output was the placeholder that used to sit here.
+            # node spent its whole tool budget on web_fetch and wrote nothing,
+            # and the run's whole output was the placeholder that used to sit
+            # here.
             reporting = report is not None and report.requested.is_set()
             ran_out = not answered_blank and not reporting
             if reporting and report is not None:
@@ -955,7 +971,7 @@ class RavenLoopBackend:
                 logger.warning(
                     "Subagent [{}] used all {} rounds without answering; asking once with no tools",
                     task_id,
-                    self._MAX_ITERATIONS,
+                    max_iterations,
                 )
                 reason = "You have used the whole tool budget for this task."
             wrap_up = await provider.chat_with_retry(
@@ -1005,7 +1021,7 @@ class RavenLoopBackend:
             raise SubagentNoAnswerError(
                 "sub-agent's reply was empty, and so was its answer when asked once more"
                 if answered_blank
-                else f"sub-agent used all {self._MAX_ITERATIONS} rounds and produced no answer"
+                else f"sub-agent used all {max_iterations} rounds and produced no answer"
             )
         logger.info("Subagent [{}] completed successfully", task_id)
         # The final state of the account, for whoever opens the node later. The
@@ -1028,8 +1044,7 @@ class RavenLoopBackend:
             # instance that read it as its own words could repeat it in a reply
             # that was not cut.
             notice = (
-                f"\n\n[raven] The sub-agent used all {self._MAX_ITERATIONS} tool rounds before finishing; "
-                "reply is partial."
+                f"\n\n[raven] The sub-agent used all {max_iterations} tool rounds before finishing; reply is partial."
             )
             if on_delta is not None:
                 await on_delta(notice)
