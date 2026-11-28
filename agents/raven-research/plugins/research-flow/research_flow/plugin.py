@@ -111,6 +111,8 @@ class _Shared:
         fetch_slice = raw.get("fetch") if isinstance(raw.get("fetch"), dict) else {}
         self.search_api_key = search_slice.get("apiKey")
         self.fetch_api_key = fetch_slice.get("apiKey")
+        self.search_base_url = search_slice.get("baseUrl")
+        self.fetch_base_url = fetch_slice.get("baseUrl")
         # The default reader's key, for the build below. The slice carries one
         # key per role, so the vendor table the kernel looks a provider up in
         # has no counterpart here; this is the only other vendor the fetch half
@@ -221,8 +223,9 @@ class _Shared:
                 repeat_notice=cfg.search.repeat_notice,
                 evidence_round_factory=evidence_round_factory,
                 saturation_factory=saturation_factory,
+                base_url=self.search_base_url,
             )
-            if tool.api_key or not tool.spec.needs_key:
+            if tool.ready:
                 self._web_search = tool
             else:
                 spec = SEARCH_PROVIDERS[self.search_provider]
@@ -286,7 +289,9 @@ class _Shared:
             # not issued for, so a provider neither of these keys belongs to
             # gets none. The selection is written second because it wins when it
             # IS the default reader, whose own key is then ``fetch.apiKey``.
-            fetch_provider = WebFetchTool.effective_provider(self.fetch_provider, self.fetch_api_key)
+            fetch_provider = WebFetchTool.effective_provider(
+                self.fetch_provider, self.fetch_api_key, base_url=self.fetch_base_url
+            )
             fetch_keys = {
                 DEFAULT_FETCH_PROVIDER: self.fetch_fallback_api_key,
                 self.fetch_provider: self.fetch_api_key,
@@ -295,6 +300,7 @@ class _Shared:
                 api_key=fetch_keys.get(fetch_provider),
                 proxy=self.proxy,
                 provider=fetch_provider,
+                base_url=self.fetch_base_url if fetch_provider == self.fetch_provider else None,
                 **kwargs,
             )
         return self._web_fetch

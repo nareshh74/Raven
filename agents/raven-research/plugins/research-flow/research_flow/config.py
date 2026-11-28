@@ -470,6 +470,8 @@ _PASSTHROUGH_KEYS = {
     "search.apiKey",
     "search.api_key",
     "search.provider",
+    "search.baseUrl",
+    "fetch.baseUrl",
     "fetch.apiKey",
     "fetch.api_key",
     "fetch.provider",
