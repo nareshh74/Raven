@@ -70,6 +70,63 @@ async def test_config_get_reads_persisted_values(fake_home: Path) -> None:
     assert result["config"]["tui.theme"] == "solarized-dark"
 
 
+@pytest.mark.parametrize("saved", [False, True])
+async def test_session_autonomy_persists_without_changing_other_sessions_or_default(
+    fake_home: Path, tmp_path, saved: bool,
+) -> None:
+    from raven.session.manager import SessionManager
+
+    sessions = SessionManager(tmp_path / "workspace")
+    if saved:
+        sessions.save(sessions.get_or_create("tui:one"))
+    factory = lambda: SimpleNamespace(sessions=sessions)
+    key = "agents.defaults.autonomyMode"
+    await config_set({"key": key, "value": "manual"})
+    await config_set(
+        {"key": key, "value": "auto", "scope": "session", "session_id": "tui:one"},
+        agent_loop_factory=factory,
+    )
+    reloaded = SessionManager(tmp_path / "workspace")
+    assert reloaded.get_or_create("tui:one").metadata["autonomy_mode"] == "auto"
+    for sid, expected in (("tui:one", "auto"), ("tui:two", "manual")):
+        result = await config_get({"keys": [key], "session_id": sid}, agent_loop_factory=factory)
+        assert result["config"][key] == expected
+    result = await config_unset(
+        {"key": key, "scope": "session", "session_id": "tui:one"}, agent_loop_factory=factory,
+    )
+    assert result == {"removed": True, "previous": "auto", "default": "manual"}
+    assert SessionManager(tmp_path / "workspace").get_or_create("tui:one").metadata["autonomy_mode"] is None
+    assert (await config_get({"keys": [key], "session_id": "tui:one"}, agent_loop_factory=factory))["config"][key] == "manual"
+    assert (await config_get({"keys": [key]}))["config"][key] == "manual"
+
+
+async def test_config_get_autonomy_ignores_another_turns_held_override(fake_home: Path, tmp_path) -> None:
+    from raven.config.live import LiveConfig, autonomy_mode, hold_for_this_turn
+    from raven.session.manager import SessionManager
+
+    key = "agents.defaults.autonomyMode"
+    sessions = SessionManager(tmp_path / "workspace")
+    factory = lambda: SimpleNamespace(sessions=sessions)
+    await config_set({"key": key, "value": "manual"})
+    await config_set(
+        {"key": key, "value": "balanced", "scope": "session", "session_id": "tui:one"},
+        agent_loop_factory=factory,
+    )
+    with hold_for_this_turn(**{key: "auto"}):
+        assert autonomy_mode(LiveConfig(fake_home / ".raven" / "config.json")) == "auto"
+        for sid, expected in ((None, "manual"), ("tui:one", "balanced"), ("tui:two", "manual")):
+            result = await config_get({"keys": [key], "session_id": sid}, agent_loop_factory=factory)
+            assert result["config"][key] == expected
+
+
+@pytest.mark.parametrize("value", ["reckless", "", 1, None])
+async def test_session_autonomy_validates_before_writing(fake_home: Path, value) -> None:
+    with pytest.raises(ConfigValidationError):
+        await config_set(
+            {"key": "agents.defaults.autonomyMode", "value": value, "scope": "session", "session_id": "tui:one"},
+        )
+
+
 # ----------------------------------------------------------------------------
 # config.set
 # ----------------------------------------------------------------------------

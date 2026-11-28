@@ -93,7 +93,7 @@ export function drawQueue(): void {
   store.drawQueue()
 }
 
-export const queuePush = (text: string, moveOn?: string): void => store.queuePush(text, moveOn)
+export const queuePush = (text: string, moveOn?: string, autonomyMode?: QueuedMessage['autonomyMode']): void => store.queuePush(text, moveOn, autonomyMode)
 export const say = (text: string): void => store.say(text)
 export const queueShift = (): QueuedMessage | undefined => store.queueShift()
 export const queueClear = (): void => store.queueClear()

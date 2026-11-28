@@ -678,19 +678,20 @@ class WiringMixin:
         binding = active_binding() or self._default_binding
         return binding.context_window
 
-    def _turn_scope(self):
+    def _turn_scope(self, *, autonomy: str | None = None):
         """Hold the settings a turn reads more than once, from here on.
 
         Entered beside ``use_binding`` at the turn boundary and for the same
         reason: one turn, one answer. The cap is resolved here rather than at
         its first read, which happens after context assembly.
         """
-        from raven.config.live import hold_for_this_turn, max_tool_iterations, reasoning_effort
+        from raven.config.live import autonomy_mode, hold_for_this_turn, max_tool_iterations, reasoning_effort
 
         return hold_for_this_turn(
             **{
                 _CAP_KEY: max_tool_iterations(self._live_config),
                 _EFFORT_KEY: reasoning_effort(self._live_config),
+                "agents.defaults.autonomyMode": autonomy or autonomy_mode(self._live_config),
             }
         )
 

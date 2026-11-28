@@ -114,6 +114,23 @@ global setting run instead. The pick stays saved as named for a model that
 declares it. It moves Raven's own model calls only; sub-agents keep the
 configured default.
 
+### Conversation autonomy
+
+Open the model picker beside the WebUI composer to choose **Autonomy**:
+**Manual** asks before acting, **Balanced** uses the escalation ladder, and
+**Auto** works end-to-end. The first row saves the choice for this session.
+**Next prompt** overrides it for one message, then returns to **Session**.
+A small amber dot on the model chip marks an armed next-prompt override.
+An explicit next-prompt choice waits for its own turn if another turn is
+running; it is not injected into work already in progress. Queued messages
+and retries keep their explicit choice.
+
+Session choices are saved immediately, even before the first message, and
+survive a gateway restart.
+Without an override, turns inherit `agents.defaults.autonomyMode` from the
+config file, or **Balanced** when unspecified. Autonomy changes the agent's
+ask-versus-act instructions; it does not change tool permissions.
+
 ## Add capability deliberately
 
 Use a skill for reusable instructions, MCP for external tools, and a plugin for

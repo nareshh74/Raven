@@ -8677,6 +8677,46 @@
       "en": "The browser refused notifications",
       "zh": "浏览器拒绝了通知权限"
     },
+    "gui.autonomy.title": {
+      "en": "Autonomy",
+      "zh": "自主程度"
+    },
+    "gui.autonomy.session": {
+      "en": "Session",
+      "zh": "当前会话"
+    },
+    "gui.autonomy.turn": {
+      "en": "Next prompt",
+      "zh": "下一条提示"
+    },
+    "gui.autonomy.manual": {
+      "en": "Manual",
+      "zh": "手动"
+    },
+    "gui.autonomy.balanced": {
+      "en": "Balanced",
+      "zh": "均衡"
+    },
+    "gui.autonomy.auto": {
+      "en": "Auto",
+      "zh": "自动"
+    },
+    "gui.autonomy.scope": {
+      "en": "Autonomy sets how far the agent goes before asking. The top row is saved for this session. Next prompt overrides it for one message, then returns to Session. Tool permissions remain unchanged.",
+      "zh": "自主程度决定智能体在询问前可以自行推进到哪一步。第一行的选择会保存到当前会话。“下一条提示”仅覆盖一条消息，之后恢复为会话设置。工具权限保持不变。"
+    },
+    "gui.autonomy.failed": {
+      "en": "Could not update autonomy: {detail}",
+      "zh": "无法更新自主程度：{detail}"
+    },
+    "gui.autonomy.unavailable": {
+      "en": "This gateway did not report an autonomy mode.",
+      "zh": "此网关未返回自主模式。"
+    },
+    "gui.autonomy.refused": {
+      "en": "The gateway refused the session autonomy change.",
+      "zh": "网关拒绝了当前会话的自主程度更改。"
+    },
     "gui.settings.about.version": {
       "en": "Version",
       "zh": "版本"

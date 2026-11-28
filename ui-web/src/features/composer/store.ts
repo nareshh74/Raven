@@ -561,8 +561,8 @@ export function wheeled(up: boolean): void {
 
 export const queue = (): QueuedMessage[] => get().queue
 
-export function queuePush(text: string, moveOn?: string): void {
-  set({ queue: [...get().queue, moveOn ? { text, moveOn } : { text }], editing: null })
+export function queuePush(text: string, moveOn?: string, autonomyMode?: QueuedMessage['autonomyMode']): void {
+  set({ queue: [...get().queue, { text, ...(moveOn ? { moveOn } : {}), ...(autonomyMode ? { autonomyMode } : {}) }], editing: null })
 }
 
 export function queueShift(): QueuedMessage | undefined {

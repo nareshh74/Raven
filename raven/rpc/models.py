@@ -2265,6 +2265,7 @@ class SessionHistoryResult(_Strict):
 class TurnSendParams(_Strict):
     session_key: str
     content: str
+    autonomy_mode: Literal["manual", "balanced", "auto"] | None = None
     playbook_mode: Literal["off", "task", "persona"] | None = None
     """Optional per-turn override for dynamic Playbook generation."""
     channel: str | None = None
@@ -2834,6 +2835,8 @@ class ConfigSetParams(_Strict):
 
 class ConfigUnsetParams(_Strict):
     key: str
+    session_id: str | None = None
+    scope: Literal["session", "default"] | None = None
 
 
 class ConfigUnsetResult(_Strict):

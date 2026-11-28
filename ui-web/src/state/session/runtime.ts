@@ -37,6 +37,7 @@ import { show as ntfPush } from '../../lib/notifications'
 import { current as sessionCurrent, setCurrent as sessionSet } from '../../lib/session'
 import { hasNamingFlag, hasTurnDuration } from '../../rpc/capabilities'
 import { gateway } from '../../rpc/gateway'
+import * as autonomy from '../autonomy'
 import { ask as confirmAsk } from '../confirm'
 import { load as loadEffort } from '../effort'
 import { adopt as adoptBases, staged as stagedBases } from '../mentions'
@@ -145,6 +146,7 @@ export class SessionRuntime {
   /* The group that message was sent with, so its retry carries the same one
      rather than a bar the reader picked since. */
   lastAskMoveOn: string | undefined
+  lastAskAutonomyMode: autonomy.AutonomyMode | undefined
 
   /* The bubble a send drew for a turn whose `message.start` has not arrived:
      that frame files the turn's id on it, and a task board step finds the
@@ -329,7 +331,7 @@ export const mediaOf = (text: unknown): { media?: string[] } => {
    keep every message sent meanwhile out of the running turn. Unlent, nothing
    is carried. */
 export interface BeforeSend {
-  take: (sessionKey: string | null, text: string) => Required<QueuedMessage> | null
+  take: (sessionKey: string | null, text: string) => Required<Pick<QueuedMessage, 'text' | 'moveOn'>> | null
 }
 let beforeSend: BeforeSend | null = null
 
@@ -379,7 +381,7 @@ export function send(text: string): void {
   /* Every way of sending ends here, the ones that skip the composer's own
      button included; an imported session takes none of them. */
   if (isImportedKey(sessionCurrent())) return
-  route(beforeSend?.take(sessionCurrent(), text) ?? { text })
+  route({ ...(beforeSend?.take(sessionCurrent(), text) ?? { text }), autonomyMode: autonomy.takeTurn() })
 }
 
 /** A queued message, let go with the group it was sent with. */
@@ -391,12 +393,12 @@ export function sendQueued(queued: QueuedMessage): void {
 /* A retry re-sends the message that failed, as it first went out: it keeps
    that message's group and never takes the bar, which by now may belong to
    another message. */
-export function resend(text: string, moveOn?: string): void {
+export function resend(text: string, moveOn?: string, autonomyMode?: autonomy.AutonomyMode): void {
   if (isImportedKey(sessionCurrent())) return
-  route(moveOn ? { text, moveOn } : { text })
+  route({ text, moveOn, autonomyMode })
 }
 
-function route({ text, moveOn }: QueuedMessage): void {
+function route({ text, moveOn, autonomyMode }: QueuedMessage): void {
   /* There is no turn to merge into until the conversation exists. A draft's
      first message is still being turned into one -- `registryIsDraft` is
      already false while `promoting` runs its staged writes -- so a second
@@ -405,7 +407,7 @@ function route({ text, moveOn }: QueuedMessage): void {
      queue then delivers anyway. It waits in the queue, as it always has; so
      does a message about a Task Group (BeforeSend, above). */
   if (turn.busy()) {
-    if (moveOn || registryIsDraft() || promoting) queuePush(text, moveOn)
+    if (moveOn || autonomyMode || registryIsDraft() || promoting) queuePush(text, moveOn, autonomyMode)
     else sendMidTurn(text)
     return
   }
@@ -414,6 +416,7 @@ function route({ text, moveOn }: QueuedMessage): void {
      the second attempt carries the same message as the first. */
   rt.lastAsk = text
   rt.lastAskMoveOn = moveOn
+  rt.lastAskAutonomyMode = autonomyMode
   rt.asked = ask(text)
   turn.dispatch({ type: 'send' })
   dropStaleSteps(rt)
@@ -424,11 +427,11 @@ function route({ text, moveOn }: QueuedMessage): void {
     transcript.killStatus()
     turn.dispatch({ type: 'idle' })
     noteRow(t('gui.err.send'), err.message === 'not connected' ? t('gui.err.disconnected') : (err.message || String(e)),
-      { retry: () => resend(text, moveOn) })
+      { retry: () => resend(text, moveOn, autonomyMode) })
     goState(); drawMeter()
   }
   if (!registryIsDraft()) {
-    sendOnSession(text, failed, moveOn)
+    sendOnSession(text, failed, moveOn, autonomyMode)
     return
   }
   // The draft becomes a real session here, on its first message.
@@ -442,6 +445,7 @@ function route({ text, moveOn }: QueuedMessage): void {
        first message lands, not about this one. Left alone deliberately. */
     const sent = await gateway().call('turn.send', {
       session_key: sessionCurrent() as string, content: text, ...mediaOf(text), ...(moveOn ? { move_on: moveOn } : {}),
+      ...(autonomyMode ? { autonomy_mode: autonomyMode } : {}),
     })
     if (ran && sent.accepted !== false) rememberUsed(ran)
     if (hasNamingFlag(sent) && sent.naming === false) namingDeclined(id as string)
@@ -462,15 +466,15 @@ function route({ text, moveOn }: QueuedMessage): void {
  * that setup is complete, which is exactly when this send is safe. The guard is
  * on this function rather than on its caller so that the wait cannot be
  * bypassed by a second way in -- the caller is one line either way. */
-export function sendOnSession(text: string, failed: (e: unknown) => void, moveOn?: string): void {
+export function sendOnSession(text: string, failed: (e: unknown) => void, moveOn?: string, autonomyMode?: autonomy.AutonomyMode): void {
   if (promoting) {
-    openConversation().then(() => dispatchSend(text, failed, moveOn), failed)
+    openConversation().then(() => dispatchSend(text, failed, moveOn, autonomyMode), failed)
     return
   }
-  dispatchSend(text, failed, moveOn)
+  dispatchSend(text, failed, moveOn, autonomyMode)
 }
 
-export function dispatchSend(text: string, failed: (e: unknown) => void, moveOn?: string): void {
+export function dispatchSend(text: string, failed: (e: unknown) => void, moveOn?: string, autonomyMode?: autonomy.AutonomyMode): void {
   const current = sessionCurrent()
   touchSession(current, text)
   beginNaming(text)
@@ -479,10 +483,13 @@ export function dispatchSend(text: string, failed: (e: unknown) => void, moveOn?
      at all, and reading that as "declined" would tear down a placeholder
      while a title really is on its way. Which servers carry it is
      rpc/capabilities.ts's question; what the verdict means stays here. */
-  gateway()
+  const send = () => gateway()
     .call('turn.send', {
       session_key: current as string, content: text, ...mediaOf(text), ...(moveOn ? { move_on: moveOn } : {}),
+      ...(autonomyMode ? { autonomy_mode: autonomyMode } : {}),
     })
+  const waiting = autonomy.ready(viewRuntime())
+  ;(waiting ? waiting.then(send) : send())
     .then((r) => {
       if (ran && r.accepted !== false) rememberUsed(ran)
       if (hasNamingFlag(r) && r.naming === false) namingDeclined(current as string)
@@ -706,6 +713,8 @@ export async function promote(preview?: string, atPointer?: (id: string) => void
   await applyStagedTier(draftRt, s.id, gen)
   await applyStagedEffort(draftRt, s.id, gen)
   await applyStagedPerm(draftRt, s.id, gen)
+  const stagedAutonomy = autonomy.applyDraft(draftRt, s.id)
+  if (stagedAutonomy) await stagedAutonomy
   sessionDraw()
   await subscribe(s.id)
   return s.id

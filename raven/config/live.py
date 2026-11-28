@@ -606,7 +606,11 @@ AUTONOMY_MODES = ("manual", "balanced", "auto")
 
 
 def autonomy_mode(live: LiveConfig) -> str:
-    """``agents.defaults.autonomyMode`` as the file has it; unknown or absent is ``balanced``."""
+    """The turn's held autonomy, otherwise the live default (or ``balanced``)."""
+    return held("agents.defaults.autonomyMode", lambda: _live_autonomy_mode(live))
+
+
+def _live_autonomy_mode(live: LiveConfig) -> str:
     for key in ("agents.defaults.autonomyMode", "agents.defaults.autonomy_mode"):
         value = live.get(key)
         if isinstance(value, str) and value.strip().lower() in AUTONOMY_MODES:

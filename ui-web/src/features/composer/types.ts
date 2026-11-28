@@ -23,6 +23,7 @@ export interface Attachment {
 export interface QueuedMessage {
   readonly text: string
   readonly moveOn?: string
+  readonly autonomyMode?: 'manual' | 'balanced' | 'auto'
 }
 
 /* One palette command. `id` is the catalogue key both spellings render from,

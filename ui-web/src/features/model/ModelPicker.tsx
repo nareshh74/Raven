@@ -25,6 +25,8 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExter
 import { ModelTagDefs, ModelTags } from '../../components/ModelTags'
 import { ProviderIcon } from '../../components/ProviderMark'
 import { t } from '../../i18n/t'
+import { current as sessionCurrent, onChange as onSessionChange } from '../../lib/session'
+import * as autonomy from '../../state/autonomy'
 import * as effort from '../../state/effort'
 import * as lang from '../../state/lang'
 import * as tier from '../../state/tier'
@@ -70,7 +72,7 @@ function TierRow(): JSX.Element | null {
   const heading = t(tier.isRanked() ? 'gui.tier.title' : 'gui.tier.mode')
   const note = tier.scopeNote()
   return (
-    <div className="model-tier">
+    <div className="model-tier model-subagent-tier">
       <span className="model-tier-k">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d={BARS} /></svg>
         {heading}
@@ -136,6 +138,50 @@ function EffortRow(): JSX.Element | null {
         ))}
       </span>
     </div>
+  )
+}
+
+function AutonomyRow(): JSX.Element | null {
+  const snap = useSyncExternalStore(autonomy.subscribe, autonomy.get)
+  const sid = useSyncExternalStore(onSessionChange, sessionCurrent)
+  useEffect(() => { void autonomy.load() }, [sid])
+  if (!snap.loaded) {
+    return snap.error ? <div className="empty" role="alert">{t('gui.autonomy.failed', { detail: snap.error })}</div> : null
+  }
+  const heading = t('gui.autonomy.title')
+  const note = t('gui.autonomy.scope')
+  return (
+    <>
+      <div className="model-tier model-autonomy">
+        <span className="model-tier-k">
+          {heading}
+          <span className="model-tier-help" data-tip={note} data-tip-wrap="" aria-label={note} role="img">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d={HELP} /></svg>
+          </span>
+        </span>
+        <span className="model-seg" role="radiogroup" aria-label={t('gui.autonomy.session')}>
+          {autonomy.MODES.map((mode) => (
+            <button key={mode} type="button" role="radio" disabled={snap.saving}
+              aria-checked={snap.session === mode}
+              onClick={() => { void autonomy.pickSession(mode) }}>
+              {t(`gui.autonomy.${mode}`)}
+            </button>
+          ))}
+        </span>
+      </div>
+      <div className="model-tier model-autonomy-turn">
+        <span className="model-tier-k">{t('gui.autonomy.turn')}</span>
+        <span className="model-seg" role="radiogroup" aria-label={t('gui.autonomy.turn')}>
+          {([null, ...autonomy.MODES]).map((mode) => (
+            <button key={mode ?? 'session'} type="button" role="radio"
+              aria-checked={snap.turn === mode} onClick={() => autonomy.pickTurn(mode)}>
+              {t(`gui.autonomy.${mode ?? 'session'}`)}
+            </button>
+          ))}
+        </span>
+      </div>
+      {snap.error ? <div className="empty" role="alert">{t('gui.autonomy.failed', { detail: snap.error })}</div> : null}
+    </>
   )
 }
 
@@ -438,6 +484,7 @@ function Pick(): JSX.Element {
       </div>
       {at.scope !== 'default' && !at.offer.title ? <TierRow /> : null}
       {at.scope !== 'default' && !at.offer.title ? <EffortRow /> : null}
+      {at.scope !== 'default' && !at.offer.title ? <AutonomyRow /> : null}
       {at.footer ? (
         <div className="foot">
           <button

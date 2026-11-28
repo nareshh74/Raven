@@ -3,7 +3,7 @@
 from asyncio import Event
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 
 from raven.spine.message import Media, Source
 
@@ -136,6 +136,7 @@ class TurnRequest:
     # Per-turn UI choice for Playbook generation. None inherits the configured
     # default; off/task/persona are resolved before the setup model call.
     playbook_mode: str | None = None
+    autonomy_mode: Literal["manual", "balanced", "auto"] | None = None
     # ``(trace_id, span_id)`` of the span that dispatched the work this turn
     # reports on, set only by a submitter announcing a dispatched result. A turn
     # no longer inherits its submitter's context, so where it came from has to

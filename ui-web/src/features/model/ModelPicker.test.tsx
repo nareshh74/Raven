@@ -3,6 +3,9 @@ import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { resetTranslator, setTranslator } from '../../i18n/t'
+import { FixtureTransport } from '../../rpc/fixtureTransport'
+import { setGateway } from '../../rpc/gateway'
+import * as autonomy from '../../state/autonomy'
 import * as confirmStore from '../../state/confirm'
 import * as effort from '../../state/effort'
 import * as pageStore from '../../state/page'
@@ -48,6 +51,7 @@ interface Harness {
 }
 
 function install(over: Partial<ModelSource> = {}, providers = PROVIDERS): Harness {
+  vi.spyOn(autonomy, 'load').mockResolvedValue(undefined)
   if (!store.current()) store.setCurrent('minimax-m3')
   const h: Harness = {
     toasts: [], persisted: [], persistedProviders: [], persistedScopes: [],
@@ -123,6 +127,45 @@ afterEach(() => {
   resetSources()
   document.body.innerHTML = ''
   localStorage.clear()
+  autonomy._resetForTests()
+  setGateway(null)
+  vi.restoreAllMocks()
+})
+
+describe('conversation autonomy', () => {
+  it('offers session and next-prompt controls beside Mode without changing settings', async () => {
+    install()
+    vi.mocked(autonomy.load).mockRestore()
+    const transport = new FixtureTransport({
+      'config.get': { config: { 'agents.defaults.autonomyMode': 'balanced' } },
+      'config.set': { applied: true, previous: null },
+    })
+    setGateway(transport)
+    mount()
+    await act(async () => { store.open(null) })
+    const session = document.querySelector<HTMLElement>('.model-autonomy')!
+    const prompt = document.querySelector<HTMLElement>('.model-autonomy-turn')!
+    expect(session.textContent).toContain('gui.autonomy.title')
+    expect(session.querySelector('[aria-checked="true"]')?.textContent).toBe('gui.autonomy.balanced')
+    await act(async () => { fireEvent.click(prompt.querySelectorAll('button')[1]!) })
+    expect(autonomy.get().turn).toBe('manual')
+    expect(transport.calls.filter((c) => c.method === 'config.set')).toEqual([])
+    act(() => store.close())
+    await act(async () => { store.open(document.getElementById('modelChip')) })
+    expect(document.querySelector('.model-autonomy')).toBeNull()
+  })
+
+  it('shows a gateway refusal instead of claiming autonomy was changed', async () => {
+    install()
+    vi.mocked(autonomy.load).mockRestore()
+    setGateway(new FixtureTransport({
+      'config.get': () => { throw new Error('offline') },
+    }))
+    mount()
+    await act(async () => { store.open(null) })
+    expect(document.querySelector('[role="alert"]')?.textContent).toContain('offline')
+    expect(document.querySelector('.model-autonomy')).toBeNull()
+  })
 })
 describe('the model picker', () => {
   it('renders nothing until it is asked for', () => {
@@ -601,12 +644,16 @@ describe('the tier row', () => {
     { id: 'high', name: 'High', description: 'A balance of speed and quality.' },
     { id: 'max', name: 'Max', description: 'Deepest reasoning and full sub-agent effort, for complex or open-ended work.' },
   ]
-  const seg = (): HTMLElement[] => [...document.querySelectorAll<HTMLElement>('.mpick .model-seg button')]
+  const seg = (): HTMLElement[] => [...document.querySelectorAll<HTMLElement>('.mpick .model-subagent-tier .model-seg button')]
 
-  afterEach(() => { tier._resetForTests() })
+  afterEach(() => { act(() => tier._resetForTests()) })
 
   it('offers every rung as one segmented control, the one in force pressed, and asks for the one clicked', async () => {
     install()
+    vi.mocked(autonomy.load).mockRestore()
+    setGateway(new FixtureTransport({
+      'config.get': { config: { 'agents.defaults.autonomyMode': 'balanced' } },
+    }))
     const asked: Array<string | null> = []
     setSources({
       model: (await import('./store')).source(),
@@ -617,14 +664,15 @@ describe('the tier row', () => {
     })
     await act(async () => { await tier.load() })
     mount()
-    openIt()
+    await act(async () => { store.open(null) })
+    expect(document.querySelector('.model-autonomy')).not.toBeNull()
     expect(seg().map((b) => b.textContent)).toEqual(['gui.tier.medium', 'gui.tier.high', 'gui.tier.max'])
     expect(seg().map((b) => b.getAttribute('aria-checked'))).toEqual(['false', 'true', 'false'])
     /* One explanation, behind the question mark, through the page's tooltip;
        the rungs and the row itself carry none. */
     expect(seg().map((b) => b.title)).toEqual(['', '', ''])
-    expect(document.querySelector('.mpick .model-tier')!.getAttribute('title')).toBeNull()
-    const help = document.querySelector('.mpick .model-tier-help')!
+    expect(document.querySelector('.mpick .model-subagent-tier')!.getAttribute('title')).toBeNull()
+    const help = document.querySelector('.mpick .model-subagent-tier .model-tier-help')!
     expect(help.getAttribute('data-tip')).toBe('gui.tier.scope')
     /* A sentence, so the pill wraps it rather than running one line across the window. */
     expect(help.hasAttribute('data-tip-wrap')).toBe(true)
@@ -639,7 +687,7 @@ describe('the tier row', () => {
     install()
     mount()
     openIt()
-    expect(document.querySelector('.mpick .model-tier')).toBeNull()
+    expect(document.querySelector('.mpick .model-subagent-tier')).toBeNull()
     act(() => store.close())
     setSources({
       model: (await import('./store')).source(),
@@ -653,7 +701,7 @@ describe('the tier row', () => {
       store.open(document.getElementById('modelChip'), undefined, undefined,
         { kind: 'text', title: 'Chat', pick: async () => {} })
     })
-    expect(document.querySelector('.mpick .model-tier')).toBeNull()
+    expect(document.querySelector('.mpick .model-subagent-tier')).toBeNull()
   })
 })
 

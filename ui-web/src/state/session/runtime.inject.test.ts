@@ -23,7 +23,7 @@ interface Row { id: string; title?: string }
 
 async function harness({
   reject = null as { code?: number; message?: string } | null, draft = false, current = 's1',
-  create = false, failSends = 0,
+  create = false, failSends = 0, failAutonomy = null as 'refused' | 'offline' | null,
 } = {}) {
   const log: unknown[][] = []
   const notes: Array<Record<string, unknown> | undefined> = []
@@ -52,7 +52,7 @@ async function harness({
         splitAtts: (t: string) => readMessage(t),
         unpitch: () => {},
       },
-      'src/features/rail/store': { markNew: () => {}, draw: () => {}, endRename: () => {} },
+      'src/features/rail/store': { markNew: () => {}, draw: () => log.push(['sessionDraw']), endRename: () => {} },
       'src/state/sheetRack': { forget: () => {} },
       'src/state/session/rows': {
         sess: (id: string) => rows.find((r) => r.id === id),
@@ -66,7 +66,9 @@ async function harness({
         loadDraft: () => {},
         parkDraft: () => {},
         queueClear: () => { queue.length = 0 },
-        queuePush: (text: string, moveOn?: string) => { queue.push(moveOn ? { text, moveOn } : { text }) },
+        queuePush: (text: string, moveOn?: string, autonomyMode?: QueuedMessage['autonomyMode']) => {
+          queue.push({ text, ...(moveOn ? { moveOn } : {}), ...(autonomyMode ? { autonomyMode } : {}) })
+        },
         queueRestore: (next: QueuedMessage[]) => { queue.length = 0; queue.push(...next) },
         queueShift: () => queue.shift(),
         queueSnapshot: () => [...queue],
@@ -83,7 +85,7 @@ async function harness({
       'src/lib/dom': { $: looseQuery() },
       'src/lib/session': { current: () => current, setCurrent: () => {} },
       'src/features/rail/title': { plainTitle: (s: unknown) => String(s) },
-      'src/state/toast': { show: () => {} },
+      'src/state/toast': { show: (text: string) => log.push(['toast', text]) },
       'src/state/ctxWindow': { set: () => {} },
       'src/lib/notifications': { show: () => {} },
       'src/state/banner': { draw: () => {} },
@@ -113,6 +115,12 @@ async function harness({
   let turnSends = 0
   await fakeGateway((method: string, params: unknown) => {
     asked.push([method, params])
+    if (method === 'config.set' && failAutonomy) {
+      if (failAutonomy === 'offline') throw new Error('offline')
+      return { applied: false, previous: null }
+    }
+    if (method === 'config.get') return { config: { 'agents.defaults.autonomyMode': 'balanced' } }
+    if (method === 'turn.subscribe') return { subscription_id: 'sub-s1', running: false }
     if (method === 'turn.send') {
       turnSends += 1
       const refusal = reject || (turnSends <= failSends ? { code: -32602, message: 'unknown field: busy' } : null)
@@ -134,6 +142,7 @@ async function harness({
   registry.adopt(draft ? null : 's1')
   return {
     runtime,
+    autonomy: await import('../autonomy'),
     registry,
     log,
     notes,
@@ -148,6 +157,48 @@ async function harness({
 }
 
 afterEach(() => { turn._resetForTests() })
+
+describe('prompt-scoped autonomy sends', () => {
+  it.each(['refused', 'offline'] as const)('subscribes and reconciles when a staged autonomy write is %s', async (failAutonomy) => {
+    const h = await harness({ draft: true, create: true, failAutonomy })
+    await h.autonomy.pickSession('manual')
+    await expect(h.runtime.promote()).resolves.toBe('s1')
+    expect(h.registry.viewRuntime().subscriptionId).toBe('sub-s1')
+    expect(h.did('sessionDraw')).not.toHaveLength(0)
+    expect(h.did('toast')).not.toHaveLength(0)
+    expect(h.autonomy.get().session).toBe('balanced')
+    expect(h.autonomy.ready(h.registry.viewRuntime())).toBeUndefined()
+  })
+
+  it('queues an explicit prompt choice instead of injecting it into a running turn', async () => {
+    const h = await harness()
+    turn.dispatch({ type: 'send' })
+    h.autonomy.pickTurn('manual')
+    h.runtime.send('a separate manual turn')
+    expect(h.sends()).toEqual([])
+    expect(h.queue).toEqual([{ text: 'a separate manual turn', autonomyMode: 'manual' }])
+    h.autonomy.pickTurn('auto')
+    turn.dispatch({ type: 'idle' })
+    h.runtime.drain()
+    await h.tick()
+    expect(h.sends()[0]).toMatchObject({ content: 'a separate manual turn', autonomy_mode: 'manual' })
+    expect(h.autonomy.get().turn).toBe('auto')
+  })
+
+  it('sends an override once and preserves it when retrying a refused message', async () => {
+    const h = await harness({ failSends: 1 })
+    h.autonomy.pickTurn('manual')
+    h.runtime.send('retry this')
+    await h.tick()
+    expect(h.sends()[0]?.autonomy_mode).toBe('manual')
+    expect(h.autonomy.get().turn).toBeNull()
+    const retry = h.notes.find((n) => typeof n?.retry === 'function')?.retry
+    expect(retry).toBeTypeOf('function')
+    if (typeof retry === 'function') retry()
+    await h.tick()
+    expect(h.sends()[1]?.autonomy_mode).toBe('manual')
+  })
+})
 
 describe('the files a message hands to the turn', () => {
   /* The note is the record of what was handed over, and the turn receives its

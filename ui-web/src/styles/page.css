@@ -3420,6 +3420,7 @@ textarea:focus, textarea:focus-visible,
 .under .chip.model:hover, .under .chip.model[aria-expanded="true"] { color: var(--composer-ink); }
 .under .chip.model .provider-icon { width: 16px; height: 16px; }
 .under .chip.model .chrome-model-caret { display: grid; flex: none; color: var(--rail-quiet); }
+.under .chip.model .chrome-model-autonomy { width: 5px; height: 5px; flex: none; border-radius: 50%; background: var(--amber); }
 .tries { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
 .try {
   border: 1px solid var(--line); border-radius: 999px; padding: 7px 14px;
@@ -3580,8 +3581,8 @@ textarea:focus, textarea:focus-visible,
    is more than one line holds in English; a rung's word stays whole and the
    control wraps between rungs, each line's rungs sharing that line, rather
    than breaking a word inside its button. */
-.mpick .model-effort .model-seg { flex: 1 1 100%; }
-.mpick .model-effort .model-seg button { flex: 1; text-align: center; white-space: nowrap; }
+.mpick .model-effort .model-seg, .mpick .model-autonomy-turn .model-seg { flex: 1 1 100%; }
+.mpick .model-effort .model-seg button, .mpick .model-autonomy-turn .model-seg button { flex: 1; text-align: center; white-space: nowrap; }
 .mpick .foot { border-top: 1px solid var(--line-soft); padding: 7px 12px;
   display: flex; justify-content: space-between; align-items: center; }
 .mpick .foot button { font-size: 11.5px; color: var(--amber); }

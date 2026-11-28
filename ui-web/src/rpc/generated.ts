@@ -3385,6 +3385,7 @@ export interface SessionHistoryResult {
 export interface TurnSendParams {
   session_key: string;
   content: string;
+  autonomy_mode?: 'manual' | 'balanced' | 'auto';
   playbook_mode?: 'off' | 'task' | 'persona';
   channel?: string;
   chat_id?: string;
@@ -3681,6 +3682,8 @@ export interface ConfigSetResult {
 }
 export interface ConfigUnsetParams {
   key: string;
+  session_id?: string;
+  scope?: 'session' | 'default';
 }
 export interface ConfigUnsetResult {
   removed: boolean;
