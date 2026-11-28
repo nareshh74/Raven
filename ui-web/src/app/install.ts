@@ -16,7 +16,7 @@ import { onFrameBytes, onFrameJson, browserSource } from '../features/browser/so
 import { open as approveSheet } from '../features/composer/approve'
 import { closeCredential, openCredential } from '../features/composer/credential'
 import { answerInChat, askInChat, focusChat, startTaskWith } from '../features/composer/startTaskWith'
-import { setSubagentRuns } from '../features/composer/store'
+import { setSubagentWork } from '../features/composer/store'
 import { connSource } from '../features/connections/source'
 import { cronSource } from '../features/cron/source'
 import { openDeskTask } from '../features/desk/store'
@@ -39,7 +39,10 @@ import { installSessionActions } from '../features/rail/wire'
 import { MemoryStepBody, ModelStepBody, WebStepBody } from '../features/settings/SetupBodies'
 import { bannerSource, memoryStepDone, modelStepDone, settingsSource, webStepDone } from '../features/settings/source'
 import * as settingsStore from '../features/settings/store'
+import { skillsToolsSource, watchMcp } from '../features/skillsTools/source'
+import * as skillsToolsStore from '../features/skillsTools/store'
 import { agentsSource, startAgentHeartbeat } from '../features/subagents/source'
+import * as subagents from '../features/subagents/store'
 import { onBoardEvent, refresh as refreshBoards } from '../features/tasks/boards'
 import { tasksSource } from '../features/tasks/source'
 import {
@@ -67,6 +70,7 @@ import { refusal as uploadRefusal } from '../lib/upload'
 import { forget as forgetAbsent, servesTrajectory } from '../rpc/capabilities'
 import { gateway } from '../rpc/gateway'
 import { setFault as setMemFault } from '../state/banner'
+import * as detail from '../state/detail'
 import * as page from '../state/page'
 import { onDocument } from '../state/reveal'
 import * as scrollbars from '../state/scrollbars'
@@ -82,6 +86,7 @@ import * as visibility from '../state/visibility'
 import { redraw as redrawWorkdir, staged as stagedWorkdir } from '../state/workdir'
 import { onReset as onWsReset } from '../state/ws'
 import { installConnectionUI, onReconnect, surface } from './connection'
+import { orbsOf } from './subagentOrbs'
 import { showUpNote } from './updates'
 
 import type { ComposerSource } from '../features/composer/types'
@@ -159,6 +164,14 @@ export function installSources(): void {
      ahead of boot() (src/main.tsx). */
   sources.banner = bannerSource
   sources.settings = settingsSource
+  sources.skillsTools = skillsToolsSource
+  /* Keep Skills & Tools in sync when the reader edits providers or models inside
+     Settings. The page re-reads the config rather than taking the dialog's
+     snapshot: the two hold copies taken at different moments, and handing the
+     older one over would undo a change the page had already made. */
+  settingsStore.subscribe(() => {
+    if (page.get() === 'skillsToolsPage') skillsToolsStore.refreshSoon()
+  })
   sources.tier = tierSource
   sources.effort = effortSource
   sources.model = modelSource
@@ -342,7 +355,13 @@ export function installPushes(): void {
      answer. */
   registerCredentialCard({ open: openCredential, close: closeCredential })
   extAgentsStore.lendAskRaven(startTaskWith)
-  settingsStore.lendAskInChat(askInChat)
+  skillsToolsStore.lendAskInChat(askInChat)
+  skillsToolsStore.lendOpenProvider((slug) => {
+    detail.close()
+    if (slug) void settingsStore.openProviderModels(slug)
+    else void settingsStore.openModels()
+  })
+  watchMcp(skillsToolsStore.refreshSoon)
   lendTaskAnswer(answerInChat)
   lendTaskFocus(focusChat)
   lendBeforeSend({ take: takeMoveOn })
@@ -371,16 +390,25 @@ export function installPushes(): void {
   void refreshBoards()
 }
 
-/** The composer's waiting row needs the tasks store's live count, and a sibling
-    domain is reached through this wiring rather than by an import edge. The
-    subscription also covers a session reset, which empties the rows before the
-    new conversation's read lands -- so the previous conversation's work never
-    keeps the row alive. Returns its unsubscribe, so a caller that installs it
-    alone can take it back. */
+/** The composer's waiting row needs the tasks store's live count and the
+    subagents running in it, and a sibling domain is reached through this
+    wiring rather than by an import edge. The subscription also covers a
+    session reset, which empties the rows before the new conversation's read
+    lands -- so the previous conversation's work never keeps the row alive.
+    The roster gives each orb its mark; it is otherwise loaded only by the
+    subagents page, so the first orb asks for it, and its arrival repaints.
+    Returns the unsubscribe, so a caller that installs it alone can take it back. */
 export function installSubagentRuns(): () => void {
-  const paint = (): void => { setSubagentRuns(runningTasks().length) }
+  const paint = (): void => {
+    const rows = runningTasks()
+    const orbs = orbsOf(rows, subagents.get().roster)
+    if (orbs.length && !subagents.get().roster.length && sources.subagents) subagents.refreshRoster()
+    setSubagentWork(rows.length, orbs)
+  }
   paint()
-  return subscribeTasks(paint)
+  const offTasks = subscribeTasks(paint)
+  const offRoster = subagents.subscribe(paint)
+  return () => { offTasks(); offRoster() }
 }
 
 /* ── the actions: controls whose answer belongs to the session ────────────── */
@@ -414,6 +442,7 @@ async function afterReconnect(): Promise<void> {
   /* Re-read, with nothing to repaint: the one surface these rows still reach
      is the settings dialog, which reads them when it opens. */
   void loadExt().catch(() => {})
+  if (page.get() === 'skillsToolsPage') void skillsToolsStore.refresh()
   /* An import that ran on while the socket was down changed its counts, or
      ended, without this page hearing; the row reads them again the way the
      boot did. */
