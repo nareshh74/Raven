@@ -184,7 +184,7 @@ const SHARED = new Set([
 const LEGACY_SHARED = {
   a: 3, btn: 2, cap: 2, chgs: 2, cmd: 2, ct: 2, d: 4, foot: 2, k: 2,
   gap: 2, 'ghost-ic': 3, hd: 2, key: 2, lb: 3, n: 2, rm: 2, row: 2,
-  shot: 3, sk: 2, skel: 2, step: 2, sz: 2, tipdn: 2, v: 3, w: 2, wkg: 3,
+  shot: 3, sk: 2, skel: 2, step: 2, sz: 2, tipdn: 2, v: 3, w: 2, wkg: 2,
   wsnote: 2,
 }
 
@@ -285,6 +285,7 @@ const LEGACY_LOCAL = {
   /* Down one: an empty group is its heading alone, so `.grp-empty` is gone. */
   rail: 9,
   settings: 0,
+  skillsTools: 0,
   /* Up one the same way: `.chev` was shared with the schedules island's run
      list, whose rows carry a prefixed stamp and note now instead of the
      page's own names. */
@@ -352,6 +353,7 @@ const LEGACY_EXPR = {
   onboard: 0,
   rail: 2,
   settings: 0,
+  skillsTools: 0,
   /* Down from 5: `.task` moved to `LEGACY_LOCAL` and `.hl` went, with the
      hover pairing the composer strip no longer has a side for. Down from 3
      when a node's record moved to the transcript's renderer: `.live`, the
