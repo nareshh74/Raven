@@ -627,19 +627,6 @@
           }
         },
         {
-          "name": "autonomy_mode",
-          "required": false,
-          "description": "Autonomy for this turn only; otherwise inherit the session choice, then the live default.",
-          "schema": {
-            "type": "string",
-            "enum": [
-              "manual",
-              "balanced",
-              "auto"
-            ]
-          }
-        },
-        {
           "name": "playbook_mode",
           "required": false,
           "schema": {

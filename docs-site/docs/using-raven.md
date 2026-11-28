@@ -118,16 +118,13 @@ configured default.
 
 Open the model picker beside the WebUI composer to choose **Autonomy**:
 **Manual** asks before acting, **Balanced** uses the escalation ladder, and
-**Auto** works end-to-end. The first row saves the choice for this session.
-**Next prompt** overrides it for one message, then returns to **Session**.
-A small amber dot on the model chip marks an armed next-prompt override.
-An explicit next-prompt choice waits for its own turn if another turn is
-running; it is not injected into work already in progress. Queued messages
-and retries keep their explicit choice.
+**Auto** works end-to-end. The choice is saved for this session and takes
+effect from its next turn, just like **Mode**. A turn already running keeps
+the autonomy setting it started with.
 
-Session choices are saved immediately, even before the first message, and
-survive a gateway restart.
-Without an override, turns inherit `agents.defaults.autonomyMode` from the
+For a new conversation, a choice made before the first message is saved when
+that conversation is created. Saved session choices survive a gateway restart.
+Without a session choice, turns inherit `agents.defaults.autonomyMode` from the
 config file, or **Balanced** when unspecified. Autonomy changes the agent's
 ask-versus-act instructions; it does not change tool permissions.
 

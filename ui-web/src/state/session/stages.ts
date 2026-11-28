@@ -342,7 +342,7 @@ export const STAGES: readonly Stage[] = [
     rt.dispatch({ type: 'idle' })
     noteRow(p.message === 'turn_failed' ? transcript.failedTurnLabel() : (p.message || 'error'),
       p.detail || p.reason || '', {
-        ...(rt.lastAsk ? { retry: () => resend(rt.lastAsk, rt.lastAskMoveOn, rt.lastAskAutonomyMode) } : {}),
+        ...(rt.lastAsk ? { retry: () => resend(rt.lastAsk, rt.lastAskMoveOn) } : {}),
         ...(p.full_detail ? { full: p.full_detail } : {}),
       })
     transcript.artifacts(wsCurrentTurn())

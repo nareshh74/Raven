@@ -28,8 +28,6 @@ import { openModelsForMissingProvider, retryFailedLoad } from '../features/model
 import * as model from '../features/model/store'
 import { sameModel } from '../features/model/types'
 import { t } from '../i18n/t'
-import { current as sessionCurrent, onChange as onSessionChange } from '../lib/session'
-import * as autonomy from '../state/autonomy'
 
 import type { Provider } from '../features/model/types'
 import type { JSX } from 'react'
@@ -66,8 +64,6 @@ function serving(current: string): { provider: Provider; id: string } | null {
 export function ModelChip(): JSX.Element {
   useSyncExternalStore(model.subscribe, model.version)
   useSyncExternalStore(paint.subscribe, paint.get)
-  useSyncExternalStore(onSessionChange, sessionCurrent)
-  const { turn: autonomyMode } = useSyncExternalStore(autonomy.subscribe, autonomy.get)
   const me = useRef<HTMLButtonElement>(null)
   const current = model.current()
   const status = model.loadStatus()
@@ -94,10 +90,6 @@ export function ModelChip(): JSX.Element {
     >
       {at ? <ProviderIcon id={at.provider.id} name={at.provider.name} /> : null}
       <span id="modelName">{label}</span>
-      {autonomyMode ? (
-        <span className="chrome-model-autonomy" role="img"
-          aria-label={`${t('gui.autonomy.turn')}: ${t(`gui.autonomy.${autonomyMode}`)}`} />
-      ) : null}
       <span className="chrome-model-caret"><Icon icon={ArrowDown01Icon} size={12} /></span>
     </button>
   )

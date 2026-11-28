@@ -159,23 +159,12 @@ function AutonomyRow(): JSX.Element | null {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d={HELP} /></svg>
           </span>
         </span>
-        <span className="model-seg" role="radiogroup" aria-label={t('gui.autonomy.session')}>
+        <span className="model-seg" role="radiogroup" aria-label={heading}>
           {autonomy.MODES.map((mode) => (
             <button key={mode} type="button" role="radio" disabled={snap.saving}
               aria-checked={snap.session === mode}
               onClick={() => { void autonomy.pickSession(mode) }}>
               {t(`gui.autonomy.${mode}`)}
-            </button>
-          ))}
-        </span>
-      </div>
-      <div className="model-tier model-autonomy-turn">
-        <span className="model-tier-k">{t('gui.autonomy.turn')}</span>
-        <span className="model-seg" role="radiogroup" aria-label={t('gui.autonomy.turn')}>
-          {([null, ...autonomy.MODES]).map((mode) => (
-            <button key={mode ?? 'session'} type="button" role="radio"
-              aria-checked={snap.turn === mode} onClick={() => autonomy.pickTurn(mode)}>
-              {t(`gui.autonomy.${mode ?? 'session'}`)}
             </button>
           ))}
         </span>

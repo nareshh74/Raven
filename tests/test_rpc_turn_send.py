@@ -368,26 +368,14 @@ async def test_turn_send_rejects_an_unknown_playbook_mode() -> None:
         )
 
 
-@pytest.mark.parametrize("mode", [None, "manual", "balanced", "auto"])
-async def test_turn_send_passes_autonomy_to_the_turn(mode) -> None:
+async def test_turn_send_rejects_prompt_scoped_autonomy() -> None:
     scheduler = FakeScheduler()
-    await turn_send(
-        {"session_key": "tui:default", "content": "hi", "autonomy_mode": mode},
-        scheduler=scheduler,
-        turn_ids={},
-    )
-    assert scheduler.submitted[0].autonomy_mode == mode
-
-
-async def test_turn_send_rejects_invalid_autonomy_and_scoped_injection() -> None:
-    scheduler = FakeScheduler()
-    for fields in ({"autonomy_mode": "reckless"}, {"autonomy_mode": "manual", "busy": "inject"}):
-        with pytest.raises(InvalidParamsError):
-            await turn_send(
-                {"session_key": "tui:default", "content": "hi", **fields},
-                scheduler=scheduler,
-                turn_ids={},
-            )
+    with pytest.raises(InvalidParamsError):
+        await turn_send(
+            {"session_key": "tui:default", "content": "hi", "autonomy_mode": "auto"},
+            scheduler=scheduler,
+            turn_ids={},
+        )
     assert scheduler.submitted == []
 
 

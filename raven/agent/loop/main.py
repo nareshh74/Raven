@@ -1287,9 +1287,7 @@ class AgentLoop(TurnPathMixin, WiringMixin, McpGlueMixin, OrganGlueMixin):
 
             autonomy_session = self.sessions.get_or_create(req.parent_session or session_of(session_key))
             stored_autonomy = autonomy_session.metadata.get("autonomy_mode")
-            autonomy = req.autonomy_mode or (
-                stored_autonomy if stored_autonomy in AUTONOMY_MODES else autonomy_mode(self._live_config)
-            )
+            autonomy = stored_autonomy if stored_autonomy in AUTONOMY_MODES else autonomy_mode(self._live_config)
             resolution = await self._resolve_playbook_turn(req, session_key, binding)
             delegate_table = resolution.table
             if resolution.active:

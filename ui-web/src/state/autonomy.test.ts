@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-/* Session autonomy writes, draft promotion, and one-message snapshots. */
+/* Session autonomy writes, draft promotion, and pending-write isolation. */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -41,15 +41,6 @@ describe('conversation autonomy state', () => {
     expect(autonomy.get().session).toBe('auto')
   })
 
-  it('consumes a prompt override once without overwriting the session', async () => {
-    await autonomy.load()
-    autonomy.pickTurn('manual')
-    expect(autonomy.takeTurn()).toBe('manual')
-    expect(autonomy.takeTurn()).toBeUndefined()
-    expect(autonomy.get().session).toBe('balanced')
-    expect(transport.calls.every((call) => call.method === 'config.get')).toBe(true)
-  })
-
   it('stages a draft pick until promotion and never writes an unpicked default', async () => {
     const rt = adopt(null)
     await autonomy.load()
@@ -59,14 +50,6 @@ describe('conversation autonomy state', () => {
     await autonomy.applyDraft(rt, 'made')
     expect(transport.calls.at(-1)?.params).toEqual({ key: KEY, value: 'manual', scope: 'session', session_id: 'made' })
     expect(autonomy.applyDraft(rt, 'made')).toBeUndefined()
-  })
-
-  it('keeps unsent prompt choices attached to their own conversation', async () => {
-    autonomy.pickTurn('auto')
-    adopt('autonomy-two')
-    expect(autonomy.takeTurn()).toBeUndefined()
-    adopt('autonomy-one')
-    expect(autonomy.takeTurn()).toBe('auto')
   })
 
   it('clears staged choices and subscribers when reset with a reused runtime', async () => {

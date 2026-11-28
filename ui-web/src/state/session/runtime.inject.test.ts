@@ -66,9 +66,7 @@ async function harness({
         loadDraft: () => {},
         parkDraft: () => {},
         queueClear: () => { queue.length = 0 },
-        queuePush: (text: string, moveOn?: string, autonomyMode?: QueuedMessage['autonomyMode']) => {
-          queue.push({ text, ...(moveOn ? { moveOn } : {}), ...(autonomyMode ? { autonomyMode } : {}) })
-        },
+        queuePush: (text: string, moveOn?: string) => { queue.push(moveOn ? { text, moveOn } : { text }) },
         queueRestore: (next: QueuedMessage[]) => { queue.length = 0; queue.push(...next) },
         queueShift: () => queue.shift(),
         queueSnapshot: () => [...queue],
@@ -119,6 +117,7 @@ async function harness({
       if (failAutonomy === 'offline') throw new Error('offline')
       return { applied: false, previous: null }
     }
+    if (method === 'config.set') return { applied: true, previous: null }
     if (method === 'config.get') return { config: { 'agents.defaults.autonomyMode': 'balanced' } }
     if (method === 'turn.subscribe') return { subscription_id: 'sub-s1', running: false }
     if (method === 'turn.send') {
@@ -158,7 +157,7 @@ async function harness({
 
 afterEach(() => { turn._resetForTests() })
 
-describe('prompt-scoped autonomy sends', () => {
+describe('session autonomy sends', () => {
   it.each(['refused', 'offline'] as const)('subscribes and reconciles when a staged autonomy write is %s', async (failAutonomy) => {
     const h = await harness({ draft: true, create: true, failAutonomy })
     await h.autonomy.pickSession('manual')
@@ -170,33 +169,18 @@ describe('prompt-scoped autonomy sends', () => {
     expect(h.autonomy.ready(h.registry.viewRuntime())).toBeUndefined()
   })
 
-  it('queues an explicit prompt choice instead of injecting it into a running turn', async () => {
+  it('keeps the session choice across sends without a prompt override', async () => {
     const h = await harness()
-    turn.dispatch({ type: 'send' })
-    h.autonomy.pickTurn('manual')
-    h.runtime.send('a separate manual turn')
-    expect(h.sends()).toEqual([])
-    expect(h.queue).toEqual([{ text: 'a separate manual turn', autonomyMode: 'manual' }])
-    h.autonomy.pickTurn('auto')
+    await h.autonomy.load()
+    await h.autonomy.pickSession('manual')
+    h.runtime.send('first manual turn')
+    await h.tick()
     turn.dispatch({ type: 'idle' })
-    h.runtime.drain()
+    h.runtime.send('second manual turn')
     await h.tick()
-    expect(h.sends()[0]).toMatchObject({ content: 'a separate manual turn', autonomy_mode: 'manual' })
-    expect(h.autonomy.get().turn).toBe('auto')
-  })
-
-  it('sends an override once and preserves it when retrying a refused message', async () => {
-    const h = await harness({ failSends: 1 })
-    h.autonomy.pickTurn('manual')
-    h.runtime.send('retry this')
-    await h.tick()
-    expect(h.sends()[0]?.autonomy_mode).toBe('manual')
-    expect(h.autonomy.get().turn).toBeNull()
-    const retry = h.notes.find((n) => typeof n?.retry === 'function')?.retry
-    expect(retry).toBeTypeOf('function')
-    if (typeof retry === 'function') retry()
-    await h.tick()
-    expect(h.sends()[1]?.autonomy_mode).toBe('manual')
+    expect(h.sends().map((send) => send.content)).toEqual(['first manual turn', 'second manual turn'])
+    expect(h.sends().every((send) => !('autonomy_mode' in send))).toBe(true)
+    expect(h.autonomy.get().session).toBe('manual')
   })
 })
 

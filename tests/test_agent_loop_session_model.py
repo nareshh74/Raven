@@ -88,7 +88,7 @@ async def _run(loop: AgentLoop, session_key: str, body) -> object:
 
 
 @pytest.mark.asyncio
-async def test_autonomy_resolves_turn_then_session_then_live_default(tmp_path) -> None:
+async def test_autonomy_resolves_session_then_live_default(tmp_path) -> None:
     from raven.config.live import LiveConfig, autonomy_mode
     from raven.context_engine.segments.render import AUTONOMY_GUIDELINES, autonomy_guideline
 
@@ -104,13 +104,11 @@ async def test_autonomy_resolves_turn_then_session_then_live_default(tmp_path) -
         return "done"
 
     loop._run_turn = body
-    override = replace(_req("tui:a"), autonomy_mode="manual")
-    await loop.run_turn(override, None, None)
     await loop.run_turn(_req("tui:a"), None, None)
     await loop.run_turn(_req("tui:b"), None, None)
     direct = replace(_req(direct_lane("tui:a", "Raven", "h1")), parent_session="tui:a")
     await loop.run_turn(direct, None, None)
-    assert seen == ["manual", "auto", "balanced", "auto"]
+    assert seen == ["auto", "balanced", "auto"]
     assert autonomy_mode(loop._live_config) == "balanced"
     assert loop.sessions.get_or_create("tui:a").metadata["autonomy_mode"] == "auto"
 
@@ -118,6 +116,7 @@ async def test_autonomy_resolves_turn_then_session_then_live_default(tmp_path) -
 @pytest.mark.asyncio
 async def test_running_autonomy_is_frozen_and_isolated_between_sessions(tmp_path) -> None:
     from raven.config.live import LiveConfig, autonomy_mode
+    from raven.rpc.methods.config import config_set
 
     loop = _loop(tmp_path)
     loop._live_config = LiveConfig(tmp_path / "absent-config.json")
@@ -136,8 +135,11 @@ async def test_running_autonomy_is_frozen_and_isolated_between_sessions(tmp_path
     loop._run_turn = body
     running = asyncio.create_task(loop.run_turn(_req("tui:a"), None, None))
     await entered.wait()
-    loop.sessions.get_or_create("tui:a").metadata["autonomy_mode"] = "auto"
     try:
+        await config_set(
+            {"key": "agents.defaults.autonomyMode", "value": "auto", "scope": "session", "session_id": "tui:a"},
+            agent_loop_factory=lambda: loop,
+        )
         await loop.run_turn(_req("tui:b"), None, None)
     finally:
         release.set()

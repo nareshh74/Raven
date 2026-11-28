@@ -469,9 +469,6 @@ async def turn_send(
         first = exc.errors()[0] if exc.errors() else {}
         raise InvalidParamsError(str(first.get("msg", "invalid params"))) from exc
 
-    if parsed.autonomy_mode is not None and parsed.busy == "inject":
-        raise InvalidParamsError("a per-turn autonomy choice requires a new turn, not an injection")
-
     # Fail-fast: model availability before the active-turn slot, so a -32008
     # reject does not lock the session out of subsequent sends.
     _resolve_model(parsed)
@@ -563,7 +560,6 @@ async def turn_send(
         ),
         text=parsed.content,
         playbook_mode=parsed.playbook_mode,
-        autonomy_mode=parsed.autonomy_mode,
         media=_resolve_media(parsed.media, media_root),
         # conversation == the lane. For the main agent that is the session key,
         # which is also the front-end subscription key; for a direct chat it is
@@ -705,7 +701,6 @@ async def _inject_into_running(
             surface=declared_surface(),
         ),
         text=parsed.content,
-        autonomy_mode=parsed.autonomy_mode,
         media=_resolve_media(parsed.media, media_root),
         conversation=lane,
         direct_target=(parsed.target.agent, parsed.target.handle) if parsed.target is not None else None,

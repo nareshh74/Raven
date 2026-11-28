@@ -9,6 +9,7 @@ import * as autonomy from '../../state/autonomy'
 import * as confirmStore from '../../state/confirm'
 import * as effort from '../../state/effort'
 import * as pageStore from '../../state/page'
+import { adopt } from '../../state/session/registry'
 import { resetSources, setSources } from '../../state/sources'
 import * as tier from '../../state/tier'
 import { domSnapshot } from '../../test/domSnapshot'
@@ -133,8 +134,9 @@ afterEach(() => {
 })
 
 describe('conversation autonomy', () => {
-  it('offers session and next-prompt controls beside Mode without changing settings', async () => {
+  it('offers one session autonomy row beside Mode without changing settings', async () => {
     install()
+    adopt('autonomy-picker-session')
     vi.mocked(autonomy.load).mockRestore()
     const transport = new FixtureTransport({
       'config.get': { config: { 'agents.defaults.autonomyMode': 'balanced' } },
@@ -144,12 +146,19 @@ describe('conversation autonomy', () => {
     mount()
     await act(async () => { store.open(null) })
     const session = document.querySelector<HTMLElement>('.model-autonomy')!
-    const prompt = document.querySelector<HTMLElement>('.model-autonomy-turn')!
     expect(session.textContent).toContain('gui.autonomy.title')
+    expect(document.querySelector('.model-autonomy-turn')).toBeNull()
+    const radios = session.querySelectorAll('button')
+    expect([...radios].map((radio) => radio.textContent)).toEqual([
+      'gui.autonomy.manual', 'gui.autonomy.balanced', 'gui.autonomy.auto',
+    ])
+    expect(session.querySelector('[role="radiogroup"]')?.getAttribute('aria-label')).toBe('gui.autonomy.title')
     expect(session.querySelector('[aria-checked="true"]')?.textContent).toBe('gui.autonomy.balanced')
-    await act(async () => { fireEvent.click(prompt.querySelectorAll('button')[1]!) })
-    expect(autonomy.get().turn).toBe('manual')
-    expect(transport.calls.filter((c) => c.method === 'config.set')).toEqual([])
+    await act(async () => { fireEvent.click(radios[0]!) })
+    expect(autonomy.get().session).toBe('manual')
+    expect(transport.calls.filter((c) => c.method === 'config.set').map((c) => c.params)).toEqual([
+      { key: 'agents.defaults.autonomyMode', value: 'manual', scope: 'session', session_id: 'autonomy-picker-session' },
+    ])
     act(() => store.close())
     await act(async () => { store.open(document.getElementById('modelChip')) })
     expect(document.querySelector('.model-autonomy')).toBeNull()
@@ -526,7 +535,7 @@ describe('the model picker, choosing', () => {
 })
 
 describe('the model picker, closing', () => {
-  it.each(['.model-autonomy', '.model-autonomy-turn'])('closes on escape while a %s radio has focus', async (selector) => {
+  it('closes on escape while an autonomy radio has focus', async () => {
     install()
     vi.mocked(autonomy.load).mockRestore()
     setGateway(new FixtureTransport({
@@ -534,7 +543,7 @@ describe('the model picker, closing', () => {
     }))
     mount()
     await act(async () => { store.open(null) })
-    const radio = document.querySelector<HTMLButtonElement>(`${selector} [role="radio"]`)!
+    const radio = document.querySelector<HTMLButtonElement>('.model-autonomy [role="radio"]')!
     radio.focus()
     expect(document.activeElement).toBe(radio)
     fireEvent.keyDown(radio, { key: 'Escape', keyCode: 229 })

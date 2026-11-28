@@ -1,4 +1,4 @@
-/* Conversation autonomy: a persisted session choice and a one-message override. */
+/* Conversation autonomy: a persisted session choice applied from the next turn. */
 
 import { t } from '../i18n/t'
 import { gateway } from '../rpc/gateway'
@@ -14,12 +14,11 @@ const KEY = 'agents.defaults.autonomyMode'
 interface AutonomyState {
   readonly loaded: boolean
   readonly session: AutonomyMode | null
-  readonly turn: AutonomyMode | null
   readonly saving: boolean
   readonly error: string | null
 }
 
-const empty: AutonomyState = { loaded: false, session: null, turn: null, saving: false, error: null }
+const empty: AutonomyState = { loaded: false, session: null, saving: false, error: null }
 let states = new WeakMap<SessionRuntime, AutonomyState>()
 let pending = new WeakMap<SessionRuntime, Promise<void>>()
 let reads = new WeakMap<SessionRuntime, number>()
@@ -56,10 +55,6 @@ export async function load(rt: SessionRuntime = viewRuntime()): Promise<void> {
     if (reads.get(rt) !== ticket) return
     set(rt, { error: error instanceof Error ? error.message : String(error) })
   }
-}
-
-export function pickTurn(mode: AutonomyMode | null): void {
-  set(viewRuntime(), { turn: mode })
 }
 
 export async function pickSession(mode: AutonomyMode): Promise<void> {
@@ -116,14 +111,6 @@ export function applyDraft(rt: SessionRuntime, sessionId: string): Promise<void>
   })
   pending.set(rt, saving)
   return saving
-}
-
-/** Snapshot at send time, so queued messages and retries keep their own choice. */
-export function takeTurn(): AutonomyMode | undefined {
-  const rt = viewRuntime()
-  const mode = state(rt).turn ?? undefined
-  if (mode) set(rt, { turn: null })
-  return mode
 }
 
 export function _resetForTests(): void {

@@ -15,9 +15,6 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import * as store from '../features/model/store'
 import { t } from '../i18n/t'
-import { setCurrent as setSession } from '../lib/session'
-import * as autonomy from '../state/autonomy'
-import { adopt } from '../state/session/registry'
 import { resetSources, setSources } from '../state/sources'
 import { ModelChip } from './ModelChip'
 
@@ -45,29 +42,10 @@ afterEach(() => {
   store._resetForTests()
   cleanup()
   resetSources()
-  autonomy._resetForTests()
   document.body.innerHTML = ''
 })
 
 describe('the model chip', () => {
-  it('marks a one-shot autonomy choice until it is consumed or another conversation is opened', () => {
-    install([])
-    store.setCurrent('my-model')
-    adopt('chip-one')
-    mount()
-    const indicator = () => document.querySelector<HTMLElement>('.chrome-model-autonomy')
-    expect(indicator()).toBeNull()
-    act(() => autonomy.pickTurn('manual'))
-    expect(indicator()?.getAttribute('role')).toBe('img')
-    expect(indicator()?.getAttribute('aria-label')).toContain(t('gui.autonomy.turn'))
-    act(() => { adopt('chip-two'); setSession('chip-two') })
-    expect(indicator()).toBeNull()
-    act(() => { adopt('chip-one'); setSession('chip-one') })
-    expect(indicator()).not.toBeNull()
-    act(() => { autonomy.takeTurn() })
-    expect(indicator()).toBeNull()
-  })
-
   it('shows a disabled loading state until the real selection arrives', () => {
     install([])
     mount()

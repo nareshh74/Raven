@@ -3385,7 +3385,6 @@ export interface SessionHistoryResult {
 export interface TurnSendParams {
   session_key: string;
   content: string;
-  autonomy_mode?: 'manual' | 'balanced' | 'auto';
   playbook_mode?: 'off' | 'task' | 'persona';
   channel?: string;
   chat_id?: string;
